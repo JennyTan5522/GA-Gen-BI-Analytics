@@ -30,27 +30,28 @@ def load_data_into_vector_db(excel_structured_documents, collection_name: str):
     Returns:
         Chroma: An instance of the Chroma vector database containing the embedded documents.
     """
+    pass
 
-    persist_directory = "./chroma_db"
-    chroma_client = PersistentClient(path=persist_directory)
-    collection_names = chroma_client.list_collections() 
+    # persist_directory = "./chroma_db"
+    # chroma_client = PersistentClient(path=persist_directory)
+    # collection_names = chroma_client.list_collections() 
    
-    # Check if the collection exists
-    if collection_name in collection_names:
-        chroma = chroma_client.get_collection(collection_name)
-    else:
-        try:
-            chroma = Chroma.from_documents(
-                documents = excel_structured_documents,
-                collection_name = collection_name,
-                embedding = OllamaEmbeddings(model='nomic-embed-text'),
-                collection_metadata={"hnsw:space": "cosine"},
-                persist_directory=persist_directory,
-            )
-        except Exception as e:
-            logger.error(f"Error loading data into vector database: {e}")
+    # # Check if the collection exists
+    # if collection_name in collection_names:
+    #     chroma = chroma_client.get_collection(collection_name)
+    # else:
+    #     try:
+    #         chroma = Chroma.from_documents(
+    #             documents = excel_structured_documents,
+    #             collection_name = collection_name,
+    #             embedding = OllamaEmbeddings(model='nomic-embed-text'),
+    #             collection_metadata={"hnsw:space": "cosine"},
+    #             persist_directory=persist_directory,
+    #         )
+    #     except Exception as e:
+    #         logger.error(f"Error loading data into vector database: {e}")
 
-    return chroma
+    # return chroma
 
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
