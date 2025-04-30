@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.ingestion import data_ingestion, data_ingestion_window, data_ingestion_mysql, load_data_into_vector_db
+from utils.ingestion import data_ingestion, data_ingestion_window, data_ingestion_mysql #, load_data_into_vector_db
 from langchain.retrievers import BM25Retriever
 from tools.dataset_summary_tool import dataset_summary_async
 from tools.question_recommendation_tool import generate_question_recommendations_async
@@ -57,14 +57,14 @@ class DataManager:
                 #     if value:
                 #         st.session_state[key] = value
 
-            if st.session_state.data.name.endswith(".xlsx"): 
-                st.session_state.file_name = st.session_state.data.name
-                self.app.logger.info("Load Excel Data into Vector DB...")
-                self.app.logger.info(structured_excel_elements)
-                st.session_state.vector_store = load_data_into_vector_db(excel_structured_documents=structured_excel_elements, collection_name="excel_data")
-                st.session_state.bm25_retriever = BM25Retriever.from_documents(structured_excel_elements)
-                st.session_state.bm25_retriever.k = 3
-                self.app.logger.info("Completed loading Excel Data into Vector DB.")
+            # if st.session_state.data.name.endswith(".xlsx"): 
+            #     st.session_state.file_name = st.session_state.data.name
+            #     self.app.logger.info("Load Excel Data into Vector DB...")
+            #     self.app.logger.info(structured_excel_elements)
+            #     st.session_state.vector_store = load_data_into_vector_db(excel_structured_documents=structured_excel_elements, collection_name="excel_data")
+            #     st.session_state.bm25_retriever = BM25Retriever.from_documents(structured_excel_elements)
+            #     st.session_state.bm25_retriever.k = 3
+            #     self.app.logger.info("Completed loading Excel Data into Vector DB.")
                
         except Exception as e:
             st.error(f"Error loading the file: {e}")
