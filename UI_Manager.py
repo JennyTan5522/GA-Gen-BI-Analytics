@@ -2,6 +2,7 @@ import json
 from collections import defaultdict
 import pandas as pd
 import streamlit as st
+from langchain_anthropic import ChatAnthropic
 
 # Constants
 from const import (
@@ -71,16 +72,25 @@ class UIManager:
             st.markdown("---")
 
             # Model Selection
-            model_options = {
-                "Claude": self.app.llm_manager.initialize_claude_model
-            }
-            st.sidebar.write("🤖 Model Selection")
-            selected_model = st.selectbox("Model Available", model_options)
-            self.app.llm = model_options[selected_model]()
+            # model_options = {
+            #     "Claude": st.session_state.llm_manager.initialize_claude_model
+            # }
+            # st.sidebar.write("🤖 Model Selection")
+            # selected_model = st.selectbox("Model Available", model_options)
+            # st.session_state.llm = model_options[selected_model]()
 
             # Agent Settings
-            st.sidebar.write("🛠 Agent Settings")
-            st.session_state.k = st.slider("Memory Size", 1, 10, st.session_state.k)
+            # st.sidebar.write("🛠 Agent Settings")
+            # st.session_state.k = st.slider("Memory Size", 1, 10, st.session_state.k)
+
+            # API Key 
+            try:
+                st.title("API Access")
+                claude_api_key = st.text_input("Enter your API Key: ", type="password")
+                if claude_api_key:
+                    st.session_state.llm = ChatAnthropic(api_key=claude_api_key, model="claude-3-5-sonnet-20241022", temperature=0)
+            except:
+                st.error("Error while connecting to LLM Model.")
 
             # Clear History Button
             if st.button("🗑 Clear Message History"):
@@ -103,11 +113,11 @@ class UIManager:
             AgentExecutor: A fully initialized agent executor capable of handling complex queries 
                         and reasoning through multiple tools.
         """
-        db_toolkit = SQLDatabaseToolkit(db=st.session_state.db, llm=self.app.llm)
+        db_toolkit = SQLDatabaseToolkit(db=st.session_state.db, llm=st.session_state.llm)
         tools = db_toolkit.get_tools()
         tools.extend([
-            FollowUpQuestionTool(llm=self.app.llm),
-            FinalAnswerValidatorTool(llm=self.app.llm)
+            FollowUpQuestionTool(llm=st.session_state.llm),
+            FinalAnswerValidatorTool(llm=st.session_state.llm)
         ])
         
         top_k = 10 
@@ -118,7 +128,7 @@ class UIManager:
         )
 
         react_agent = create_react_agent(
-            llm=self.app.llm, 
+            llm=st.session_state.llm, 
             tools=tools, 
             prompt=prompt_template, 
         )
@@ -147,7 +157,8 @@ class UIManager:
     def handle_response_tab(self):
         if "data" not in st.session_state and "db" not in st.session_state:
             st.warning(WARNING_MESSAGE)
-
+        elif "llm" not in st.session_state:
+            st.warning("Please enter the API key to start conversation")
         else:
             if "messages" not in st.session_state:
                 st.session_state["messages"] = [{"role": "assistant", "content": "Hello! I'm your SQL Assistant. How can I assist you today?"}]
