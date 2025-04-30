@@ -11,26 +11,26 @@ from Logger_Manager import logger
 
 from langchain.schema.document import Document
 from langchain_community.utilities import SQLDatabase
-from langchain_community.vectorstores import Chroma
-from chromadb import PersistentClient
+# from langchain_community.vectorstores import Chroma
+# from chromadb import PersistentClient
 
-from langchain_community.embeddings import OllamaEmbeddings
+# from langchain_community.embeddings import OllamaEmbeddings
 
 from excel_loader.excel import UnstructuredExcelLoader
 
-def load_data_into_vector_db(excel_structured_documents, collection_name: str):
-    """
-    Loads structured Excel documents into a Chroma vector database.
+# def load_data_into_vector_db(excel_structured_documents, collection_name: str):
+#     """
+#     Loads structured Excel documents into a Chroma vector database.
 
-    Args:
-        excel_structured_documents (list): A list of structured documents extracted from an Excel file, 
-                                           typically in a format suitable for embedding-based search.
-        collection_name (str): The name of the collection where the documents will be stored in the Chroma database.
+#     Args:
+#         excel_structured_documents (list): A list of structured documents extracted from an Excel file, 
+#                                            typically in a format suitable for embedding-based search.
+#         collection_name (str): The name of the collection where the documents will be stored in the Chroma database.
 
-    Returns:
-        Chroma: An instance of the Chroma vector database containing the embedded documents.
-    """
-    pass
+#     Returns:
+#         Chroma: An instance of the Chroma vector database containing the embedded documents.
+#     """
+#     pass
 
     # persist_directory = "./chroma_db"
     # chroma_client = PersistentClient(path=persist_directory)
