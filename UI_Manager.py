@@ -103,7 +103,8 @@ class UIManager:
                         claude_llm = ChatAnthropic(
                             api_key=claude_api_key,
                             model="claude-3-5-sonnet-20241022",
-                            temperature=0
+                            temperature=0,
+                            model_kwargs={"count_tokens": False} 
                         )
                         # Test the key is correct or not
                         response = claude_llm([HumanMessage(content="Hello")])
@@ -280,7 +281,7 @@ class UIManager:
             handle_parsing_errors = True,
             max_iteration = 50, 
             max_execution_time = 300,
-            # return_intermediate_steps = True
+            return_intermediate_steps = True
         )
 
         st.write("Agent Prompt Context:", agent_executor)
