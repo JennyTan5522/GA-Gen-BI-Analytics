@@ -40,6 +40,17 @@ def safe_usage_metadata(usage):
 # Monkey-patch the function
 _create_usage_metadata = safe_usage_metadata
 
+class FixedChatAnthropic(ChatAnthropic):
+    @property
+    def _llm_type(self) -> str:
+        return "fixed_anthropic"
+    
+    def _stream(self, *args, **kwargs):
+        for chunk in super()._stream(*args, **kwargs):
+            if hasattr(chunk, 'usage_metadata'):
+                chunk.usage_metadata = None  # Disable token counting
+            yield chunk
+
 # Custom Modules
 from const import (
     WARNING_MESSAGE,
@@ -111,7 +122,7 @@ class UIManager:
             if st.button("Connect to Claude API"):
                 if claude_api_key:
                     try:
-                        claude_llm = ChatAnthropic(
+                        claude_llm = FixedChatAnthropic(
                             api_key=claude_api_key,
                             model="claude-3-5-sonnet-20241022",
                             temperature=0
