@@ -316,6 +316,7 @@ class UIManager:
 
             st.session_state.messages.append({"role": "user", "content": saved_user_message})
             st.write("User Input: ", query_input)
+            st.write({"input": query_input})
             response_text = agent_executor.invoke({"input": query_input})
             st.write("Response Text: ", response_text)
             cleaned_response_text = response_text['output'].strip().replace('```json', '').replace('```', '')
