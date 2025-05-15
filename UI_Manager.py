@@ -283,6 +283,8 @@ class UIManager:
             return_intermediate_steps = True
         )
 
+        st.write("Agent Prompt Context:", agent_executor)
+
         return agent_executor
     
     def regenerate_final_answer_prompt(self, regenerate_query_context: str):
@@ -321,6 +323,7 @@ class UIManager:
             st.session_state.messages.append({"role": "user", "content": saved_user_message})
             st.write("User Input: ", query_input)
             st.write({"input": query_input})
+            st.write("Agent Prompt Context:", agent_executor)
             response_text = agent_executor.invoke({"input": query_input})
             st.write("Response Text: ", response_text)
             cleaned_response_text = response_text['output'].strip().replace('```json', '').replace('```', '')
