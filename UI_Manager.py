@@ -261,6 +261,7 @@ class UIManager:
         )
 
         st.write("Finish Prompt Template")
+        st.write(prompt_template)
        
         react_agent = create_react_agent(
             llm = st.session_state.llm, 
@@ -321,7 +322,14 @@ class UIManager:
             st.write("Response Text: ", response_text)
             cleaned_response_text = response_text['output'].strip().replace('```json', '').replace('```', '')
         except Exception as e:
-            st.error(e)
+            # Display the error type and message
+            st.error(f"Exception type: {type(e).__name__}")
+            st.error(f"Error message: {e}")
+
+            # Print full traceback for deep debugging
+            tb_str = traceback.format_exc()
+            st.text("Full Traceback:")
+            st.code(tb_str, language='python')
         
         try:
             output_parser = PydanticOutputParser(pydantic_object=FinalAnswerFormat)
