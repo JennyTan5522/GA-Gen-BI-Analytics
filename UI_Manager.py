@@ -304,16 +304,23 @@ class UIManager:
             ValueError: If there is an issue parsing the agent's response.
             Exception: For any other errors during execution.
         """
-        if user_feedback:
-            query_input = f"Previous User Question: {user_query}"
-            user_message = st.session_state.feedback if st.session_state.feedback != "" else user_query
-            saved_user_message = user_message.get("text", user_message) if isinstance(user_message, dict) else user_message
-        else:
-            query_input = user_message = saved_user_message = user_query
+        try:
+            if user_feedback:
+                query_input = f"Previous User Question: {user_query}"
+                user_message = st.session_state.feedback if st.session_state.feedback != "" else user_query
+                saved_user_message = user_message.get("text", user_message) if isinstance(user_message, dict) else user_message
+            else:
+                query_input = user_message = saved_user_message = user_query
 
-        st.session_state.messages.append({"role": "user", "content": saved_user_message})
-        response_text = agent_executor.invoke({"input": query_input})
-        cleaned_response_text = response_text['output'].strip().replace('```json', '').replace('```', '')
+            st.write("User Msg: ", saved_user_message)
+
+            st.session_state.messages.append({"role": "user", "content": saved_user_message})
+            st.write("User Input: ", query_input)
+            response_text = agent_executor.invoke({"input": query_input})
+            st.write("Response Text: ", response_text)
+            cleaned_response_text = response_text['output'].strip().replace('```json', '').replace('```', '')
+        except Exception as e:
+            st.error(e)
         
         try:
             output_parser = PydanticOutputParser(pydantic_object=FinalAnswerFormat)
@@ -616,7 +623,9 @@ class UIManager:
                         agent_executor = self.react_agent_toolkit()
                         st.write("Invoke React Agent")
                         sql, text_response, code_block, intermediate_steps = self.invoke_agent_response(agent_executor, user_query)
+                        st.write("Finish React Agent")
                         self.display_response(sql, text_response, code_block, intermediate_steps)
+                        st.write("Display Response")
 
                         # Show feedback form for user to provide feedback on the response
                         self.display_feedback_form(user_query)
