@@ -129,8 +129,6 @@ class UIManager:
                 "db": st.session_state.db, 
                 "top_k": str(10), 
                 "dialect": st.session_state.db.dialect,
-                "additional_table_info": "",
-                "additional_feedbacks": "",
                 "plotly_unique_key": str(int((len(st.session_state.messages) + 1)/2)),
                 "chat_history": "",
             },
