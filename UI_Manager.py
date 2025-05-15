@@ -246,6 +246,9 @@ class UIManager:
 
         st.write("Generate Table Template")
 
+        if additional_feedbacks is None:
+            additional_feedbacks = ""
+
         prompt_template = PromptTemplate.from_template(
             TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE,
             partial_variables={
