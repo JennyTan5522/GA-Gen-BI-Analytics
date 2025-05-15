@@ -258,19 +258,19 @@ def data_ingestion(data, filename: str):
 
     if file_extension == "csv":
         df = pd.read_csv(data, encoding='utf-8-sig')
-        columns_to_remove = [
-            'is_amp_top_stories', 'is_amp_blue_link', 'is_job_listing', 'is_job_details',
-            'is_tpf_qa', 'is_tpf_faq', 'is_tpf_howto', 'is_weblite', 'is_action',
-            'is_events_listing', 'is_events_details', 'is_search_appearance_android_app',
-            'is_amp_story', 'is_amp_image_result', 'is_video', 'is_organic_shopping',
-            'is_review_snippet', 'is_special_announcement', 'is_recipe_feature',
-            'is_recipe_rich_snippet', 'is_subscribed_content', 'is_page_experience',
-            'is_practice_problems', 'is_math_solvers', 'is_translated_result',
-            'is_edu_q_and_a', 'is_product_snippets', 'is_merchant_listings',
-            'is_learning_videos'
-        ]
+        # columns_to_remove = [
+        #     'is_amp_top_stories', 'is_amp_blue_link', 'is_job_listing', 'is_job_details',
+        #     'is_tpf_qa', 'is_tpf_faq', 'is_tpf_howto', 'is_weblite', 'is_action',
+        #     'is_events_listing', 'is_events_details', 'is_search_appearance_android_app',
+        #     'is_amp_story', 'is_amp_image_result', 'is_video', 'is_organic_shopping',
+        #     'is_review_snippet', 'is_special_announcement', 'is_recipe_feature',
+        #     'is_recipe_rich_snippet', 'is_subscribed_content', 'is_page_experience',
+        #     'is_practice_problems', 'is_math_solvers', 'is_translated_result',
+        #     'is_edu_q_and_a', 'is_product_snippets', 'is_merchant_listings',
+        #     'is_learning_videos'
+        # ]
 
-        df.drop(columns=[col for col in columns_to_remove if col in df.columns], inplace=True)
+        # df.drop(columns=[col for col in columns_to_remove if col in df.columns], inplace=True)
 
         df_cleaned, schema = process_df(df, file_name, sql_engine)
         results[file_name] = (df_cleaned, schema)
