@@ -29,6 +29,17 @@ from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_anthropic import ChatAnthropic
 from tools.output_validator_tool import FinalAnswerValidatorTool
 
+from langchain_anthropic.chat_models import _create_usage_metadata
+
+def safe_usage_metadata(usage):
+    return {
+        "input_tokens": getattr(usage, "input_tokens", 0) or 0,
+        "output_tokens": getattr(usage, "output_tokens", 0) or 0,
+    }
+
+# Monkey-patch the function
+_create_usage_metadata = safe_usage_metadata
+
 # Custom Modules
 from const import (
     WARNING_MESSAGE,
@@ -103,9 +114,9 @@ class UIManager:
                         claude_llm = ChatAnthropic(
                             api_key=claude_api_key,
                             model="claude-3-5-sonnet-20241022",
-                            temperature=0,
-                            model_kwargs={"count_tokens": False} 
+                            temperature=0
                         )
+
                         # Test the key is correct or not
                         response = claude_llm([HumanMessage(content="Hello")])
                         st.session_state.llm = claude_llm
@@ -325,6 +336,7 @@ class UIManager:
             st.write("User Input: ", query_input)
             st.write({"input": query_input})
             st.write("Agent Prompt Context:", agent_executor)
+            
             response_text = agent_executor.invoke({"input": query_input})
             st.write("Response Text: ", response_text)
             cleaned_response_text = response_text['output'].strip().replace('```json', '').replace('```', '')
