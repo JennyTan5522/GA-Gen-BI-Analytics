@@ -251,7 +251,7 @@ class UIManager:
             partial_variables={
                 "python_plot_instructions": PYTHON_PLOT_PROMPT_TEMPLATE, 
                 "db": st.session_state.db, 
-                "top_k": 10, 
+                "top_k": str(10), 
                 "dialect": st.session_state.db.dialect,
                 "additional_table_info": table_info_prompt_template,
                 "additional_feedbacks": additional_feedbacks,
