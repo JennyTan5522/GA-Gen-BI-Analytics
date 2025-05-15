@@ -280,7 +280,7 @@ class UIManager:
             handle_parsing_errors = True,
             max_iteration = 50, 
             max_execution_time = 300,
-            return_intermediate_steps = True
+            # return_intermediate_steps = True
         )
 
         st.write("Agent Prompt Context:", agent_executor)
