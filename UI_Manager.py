@@ -194,11 +194,14 @@ class UIManager:
         Returns:
             AgentExecutor: An agent executor capable of handling complex queries and reasoning through multiple tools.
         """
+        st.write("Inside React Agent")
         db_toolkit = SQLDatabaseToolkit(db=st.session_state.db, llm=st.session_state.llm)
         tools = db_toolkit.get_tools()
         tools.extend([
             FollowUpQuestionTool(llm=st.session_state.llm), 
             FinalAnswerValidatorTool(llm=st.session_state.llm)])
+        
+        st.write("Before Pairing")
         
         # Get the latest k pairs of messages from the chat history
         paired_history_messages = []
@@ -213,6 +216,7 @@ class UIManager:
             st.error(f"Error while pairing messages: {e}")
 
         latest_k_pairs = paired_history_messages[-st.session_state.k:]
+        st.write("After Pairing")
         
         for idx, (human, ai) in enumerate(latest_k_pairs, 1):
             latest_k_chat_history += f"--- Chat {idx} ---\n"
@@ -229,6 +233,8 @@ class UIManager:
             except json.JSONDecodeError:
                 latest_k_chat_history += f"Assistant: {ai}\n\n"
 
+        st.write("Generate k history")
+
         # Get the table info
         table_info_prompt_template = ""
         if st.session_state.tables_info and len(st.session_state.tables_info) > 0:
@@ -237,6 +243,8 @@ class UIManager:
             table_info_prompt_template += "Use this information to accurately generate SQL queries.\n"
             table_info_prompt_template += "## Table Context Information\n"
             table_info_prompt_template += f"\n{all_tables_info}"
+
+        st.write("Generate Table Template")
 
         prompt_template = PromptTemplate.from_template(
             TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE,
@@ -251,6 +259,8 @@ class UIManager:
                 "chat_history": latest_k_chat_history,
             },
         )
+
+        st.write("Finish Prompt Template")
        
         react_agent = create_react_agent(
             llm = st.session_state.llm, 
@@ -602,7 +612,9 @@ class UIManager:
                 with st.spinner("We are preparing a response to your question. Please allow up to one minute for completion...."):
                     try:
                         # Invoke the agent response
+                        st.write("React Agent")
                         agent_executor = self.react_agent_toolkit()
+                        st.write("Invoke React Agent")
                         sql, text_response, code_block, intermediate_steps = self.invoke_agent_response(agent_executor, user_query)
                         self.display_response(sql, text_response, code_block, intermediate_steps)
 
