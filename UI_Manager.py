@@ -322,6 +322,8 @@ class UIManager:
             st.write("Response Text: ", response_text)
             cleaned_response_text = response_text['output'].strip().replace('```json', '').replace('```', '')
         except Exception as e:
+            import traceback
+
             # Display the error type and message
             st.error(f"Exception type: {type(e).__name__}")
             st.error(f"Error message: {e}")
