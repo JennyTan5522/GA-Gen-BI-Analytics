@@ -124,7 +124,16 @@ class UIManager:
 
         prompt = PromptTemplate.from_template(
             TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE,
-            partial_variables={"generate_plan_instructions": PYTHON_PLOT_PROMPT_TEMPLATE, "db": st.session_state.db, "top_k": top_k, "dialect": st.session_state.db.dialect},
+            partial_variables={
+                "python_plot_instructions": PYTHON_PLOT_PROMPT_TEMPLATE, 
+                "db": st.session_state.db, 
+                "top_k": str(10), 
+                "dialect": st.session_state.db.dialect,
+                "additional_table_info": "",
+                "additional_feedbacks": "",
+                "plotly_unique_key": str(int((len(st.session_state.messages) + 1)/2)),
+                "chat_history": "",
+            },
         )
 
         react_agent = create_react_agent(
