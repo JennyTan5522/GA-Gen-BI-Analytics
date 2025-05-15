@@ -122,7 +122,7 @@ class UIManager:
         
         top_k = 10 
 
-        TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE = PromptTemplate.from_template(
+        prompt = PromptTemplate.from_template(
             TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE,
             partial_variables={"generate_plan_instructions": PYTHON_PLOT_PROMPT_TEMPLATE, "db": st.session_state.db, "top_k": top_k, "dialect": st.session_state.db.dialect},
         )
@@ -130,7 +130,7 @@ class UIManager:
         react_agent = create_react_agent(
             llm=st.session_state.llm, 
             tools=tools, 
-            prompt=TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE, 
+            prompt=prompt, 
         )
 
         agent_executor = AgentExecutor(
