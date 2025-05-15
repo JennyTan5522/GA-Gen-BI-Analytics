@@ -255,7 +255,7 @@ class UIManager:
                 "dialect": st.session_state.db.dialect,
                 "additional_table_info": table_info_prompt_template,
                 "additional_feedbacks": additional_feedbacks,
-                "plotly_unique_key": int((len(st.session_state.messages) + 1)/2),
+                "plotly_unique_key": str(int((len(st.session_state.messages) + 1)/2)),
                 "chat_history": latest_k_chat_history,
             },
         )
