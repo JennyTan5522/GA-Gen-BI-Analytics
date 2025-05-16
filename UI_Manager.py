@@ -7,8 +7,8 @@ from langchain_anthropic import ChatAnthropic
 # Constants
 from const import (
     WARNING_MESSAGE,
-    TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE,
-    PYTHON_PLOT_PROMPT_TEMPLATE
+    PROMPT_TEMPLATE,
+    GENERATE_PLAN_TEMPLATE
 )
 
 # LangChain Core Modules
@@ -122,22 +122,15 @@ class UIManager:
         
         top_k = 10 
 
-        prompt = PromptTemplate.from_template(
-            TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE,
-            partial_variables={
-                "python_plot_instructions": PYTHON_PLOT_PROMPT_TEMPLATE, 
-                "db": st.session_state.db, 
-                "top_k": str(10), 
-                "dialect": st.session_state.db.dialect,
-                "plotly_unique_key": str(int((len(st.session_state.messages) + 1)/2)),
-                "chat_history": "",
-            },
+        prompt_template = PromptTemplate.from_template(
+            PROMPT_TEMPLATE,
+            partial_variables={"generate_plan_instructions": GENERATE_PLAN_TEMPLATE, "db": st.session_state.db, "top_k": top_k, "dialect": st.session_state.db.dialect},
         )
 
         react_agent = create_react_agent(
             llm=st.session_state.llm, 
             tools=tools, 
-            prompt=prompt, 
+            prompt=prompt_template, 
         )
 
         agent_executor = AgentExecutor(
