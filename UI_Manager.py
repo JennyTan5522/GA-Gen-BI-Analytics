@@ -29,17 +29,6 @@ from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_anthropic import ChatAnthropic
 from tools.output_validator_tool import FinalAnswerValidatorTool
 
-class FixedChatAnthropic(ChatAnthropic):
-    @property
-    def _llm_type(self) -> str:
-        return "fixed_anthropic"
-    
-    def _stream(self, *args, **kwargs):
-        for chunk in super()._stream(*args, **kwargs):
-            if hasattr(chunk, 'usage_metadata'):
-                chunk.usage_metadata = None  # Disable token counting
-            yield chunk
-
 # Custom Modules
 from const import (
     WARNING_MESSAGE,
@@ -111,7 +100,7 @@ class UIManager:
             if st.button("Connect to Claude API"):
                 if claude_api_key:
                     try:
-                        claude_llm = FixedChatAnthropic(
+                        claude_llm = ChatAnthropic(
                             api_key=claude_api_key,
                             model="claude-3-5-sonnet-20241022",
                             temperature=0
@@ -206,14 +195,11 @@ class UIManager:
         Returns:
             AgentExecutor: An agent executor capable of handling complex queries and reasoning through multiple tools.
         """
-        st.write("Inside React Agent")
         db_toolkit = SQLDatabaseToolkit(db=st.session_state.db, llm=st.session_state.llm)
         tools = db_toolkit.get_tools()
         tools.extend([
             FollowUpQuestionTool(llm=st.session_state.llm), 
             FinalAnswerValidatorTool(llm=st.session_state.llm)])
-        
-        st.write("Before Pairing")
         
         # Get the latest k pairs of messages from the chat history
         paired_history_messages = []
@@ -228,7 +214,6 @@ class UIManager:
             st.error(f"Error while pairing messages: {e}")
 
         latest_k_pairs = paired_history_messages[-st.session_state.k:]
-        st.write("After Pairing")
         
         for idx, (human, ai) in enumerate(latest_k_pairs, 1):
             latest_k_chat_history += f"--- Chat {idx} ---\n"
@@ -245,8 +230,6 @@ class UIManager:
             except json.JSONDecodeError:
                 latest_k_chat_history += f"Assistant: {ai}\n\n"
 
-        st.write("Generate k history")
-
         # Get the table info
         table_info_prompt_template = ""
         if st.session_state.tables_info and len(st.session_state.tables_info) > 0:
@@ -255,8 +238,6 @@ class UIManager:
             table_info_prompt_template += "Use this information to accurately generate SQL queries.\n"
             table_info_prompt_template += "## Table Context Information\n"
             table_info_prompt_template += f"\n{all_tables_info}"
-
-        st.write("Generate Table Template")
 
         if additional_feedbacks is None:
             additional_feedbacks = ""
@@ -274,9 +255,6 @@ class UIManager:
                 "chat_history": latest_k_chat_history,
             },
         )
-
-        st.write("Finish Prompt Template")
-        st.write(prompt_template)
        
         react_agent = create_react_agent(
             llm = st.session_state.llm, 
@@ -294,8 +272,6 @@ class UIManager:
             max_execution_time = 300,
             return_intermediate_steps = True
         )
-
-        st.write("Agent Prompt Context:", agent_executor)
 
         return agent_executor
     
@@ -330,27 +306,14 @@ class UIManager:
             else:
                 query_input = user_message = saved_user_message = user_query
 
-            st.write("User Msg: ", saved_user_message)
-
             st.session_state.messages.append({"role": "user", "content": saved_user_message})
-            st.write("User Input: ", query_input)
-            st.write({"input": query_input})
-            st.write("Agent Prompt Context:", agent_executor)
             
             response_text = agent_executor.invoke({"input": query_input})
-            st.write("Response Text: ", response_text)
             cleaned_response_text = response_text['output'].strip().replace('```json', '').replace('```', '')
-        except Exception as e:
-            import traceback
 
-            # Display the error type and message
+        except Exception as e:
             st.error(f"Exception type: {type(e).__name__}")
             st.error(f"Error message: {e}")
-
-            # Print full traceback for deep debugging
-            tb_str = traceback.format_exc()
-            st.text("Full Traceback:")
-            st.code(tb_str, language='python')
         
         try:
             output_parser = PydanticOutputParser(pydantic_object=FinalAnswerFormat)
@@ -649,13 +612,9 @@ class UIManager:
                 with st.spinner("We are preparing a response to your question. Please allow up to one minute for completion...."):
                     try:
                         # Invoke the agent response
-                        st.write("React Agent")
                         agent_executor = self.react_agent_toolkit()
-                        st.write("Invoke React Agent")
                         sql, text_response, code_block, intermediate_steps = self.invoke_agent_response(agent_executor, user_query)
-                        st.write("Finish React Agent")
                         self.display_response(sql, text_response, code_block, intermediate_steps)
-                        st.write("Display Response")
 
                         # Show feedback form for user to provide feedback on the response
                         self.display_feedback_form(user_query)
