@@ -4,6 +4,7 @@ from langchain.retrievers import BM25Retriever
 from tools.dataset_summary_tool import dataset_summary_async
 from tools.question_recommendation_tool import generate_question_recommendations_async
 import asyncio
+import re
 
 class DataManager:
     def __init__(self, app):
@@ -23,7 +24,7 @@ class DataManager:
                 self.schema = schema
                 self.df = df_cleaned
                 st.session_state.df = df_cleaned
-                st.session_state.file_name = st.session_state.data.name
+                st.session_state.file_name = re.sub(r'[^a-zA-Z0-9_-]', '_', st.session_state.data.name.split(".")[0])
                 self.app.logger.debug(f"Filename: ", st.session_state.file_name)
                 
                 # # Generate a sumamry & question recommendations for CSV
