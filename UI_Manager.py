@@ -129,12 +129,10 @@ class UIManager:
                                 max_tokens=8000
                             )
 
-                            # Test the key is correct or not
-                            response = claude_llm([HumanMessage(content="Hello")])
                             st.session_state.llm = claude_llm
                             st.success("✅ Successfully connected to Claude API.")
-                            # if "excel_summary" not in st.session_state and "question_recommendations" not in st.session_state:
-                            #     self.generate_dataset_overview()
+                            if "excel_summary" not in st.session_state and "question_recommendations" not in st.session_state:
+                                self.generate_dataset_overview()
 
                         except Exception as e:
                             st.error(f"❌ Failed to connect to Claude API: {e}")
