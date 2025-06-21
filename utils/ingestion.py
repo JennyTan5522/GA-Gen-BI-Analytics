@@ -11,47 +11,53 @@ from Logger_Manager import logger
 
 from langchain.schema.document import Document
 from langchain_community.utilities import SQLDatabase
-# from langchain_community.vectorstores import Chroma
-# from chromadb import PersistentClient
-
-# from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.vectorstores import Chroma
+from sentence_transformers import SentenceTransformer
 
 from excel_loader.excel import UnstructuredExcelLoader
 
-# def load_data_into_vector_db(excel_structured_documents, collection_name: str):
-#     """
-#     Loads structured Excel documents into a Chroma vector database.
+class SBERTEmbeddingFunction:
+    def __init__(self):
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
-#     Args:
-#         excel_structured_documents (list): A list of structured documents extracted from an Excel file, 
-#                                            typically in a format suitable for embedding-based search.
-#         collection_name (str): The name of the collection where the documents will be stored in the Chroma database.
+    def embed_query(self, text):
+        return self.model.encode(text).tolist()
 
-#     Returns:
-#         Chroma: An instance of the Chroma vector database containing the embedded documents.
-#     """
-#     pass
+    def embed_documents(self, texts):
+        return self.model.encode(texts).tolist()
+    
+def load_data_into_vector_db(excel_structured_documents, collection_name: str):
+    """
+    Loads structured Excel documents into a Chroma vector database.
 
-    # persist_directory = "./chroma_db"
-    # chroma_client = PersistentClient(path=persist_directory)
-    # collection_names = chroma_client.list_collections() 
-   
-    # # Check if the collection exists
-    # if collection_name in collection_names:
-    #     chroma = chroma_client.get_collection(collection_name)
-    # else:
-    #     try:
-    #         chroma = Chroma.from_documents(
-    #             documents = excel_structured_documents,
-    #             collection_name = collection_name,
-    #             embedding = OllamaEmbeddings(model='nomic-embed-text'),
-    #             collection_metadata={"hnsw:space": "cosine"},
-    #             persist_directory=persist_directory,
-    #         )
-    #     except Exception as e:
-    #         logger.error(f"Error loading data into vector database: {e}")
+    Args:
+        excel_structured_documents (list): A list of structured documents extracted from an Excel file, 
+                                           typically in a format suitable for embedding-based search.
+        collection_name (str): The name of the collection where the documents will be stored in the Chroma database.
 
-    # return chroma
+    Returns:
+        Chroma: An instance of the Chroma vector database containing the embedded documents.
+    """
+
+    persist_directory = "./chroma_db"
+    chroma_client = Chroma(persist_directory=persist_directory)
+
+    # Check if the collection exists and delete it
+    if collection_name in [col.name for col in chroma_client._client.list_collections()]:
+        chroma_client._client.delete_collection(collection_name)
+
+    try:
+        chroma = Chroma.from_documents(
+            documents = excel_structured_documents,
+            collection_name = collection_name,
+            embedding =  SBERTEmbeddingFunction(),
+            collection_metadata={"hnsw:space": "cosine"},
+            persist_directory=persist_directory,
+        )
+    except Exception as e:
+        logger.error(f"Error loading data into vector database: {e}")
+
+    return chroma
 
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
