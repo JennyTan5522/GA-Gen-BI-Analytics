@@ -26,9 +26,9 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.vectorstores import Chroma
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
 
-import sys
-import pysqlite3
-sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+# import sys
+# import pysqlite3
+# sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 
 import chromadb
 from langchain_anthropic import ChatAnthropic
@@ -561,22 +561,6 @@ class UIManager:
             agent_thoughts (str, optional): Agent's reasoning or steps.
         """
         try:
-            print("SQL: ", sql)
-            print(type(sql))
-            print()
-            print("Response: ", response)
-            print(type(response))
-            print()
-            print("Code Block: ", code_block)
-            print(type(code_block))
-            print()
-            print("Follow Up Questions: ", follow_up_questions)
-            print(type(follow_up_questions))
-            print()
-            print("Agent Thoughts: ", agent_thoughts)
-            print(type(agent_thoughts))
-            print()
-
             sql_is_blank = len(sql) == 0  
             code_is_blank = not code_block.strip() 
 
