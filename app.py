@@ -9,9 +9,6 @@ class GenBIApp:
         self.logger = LoggerManager.configure_logger()
         self.logger.info("🚀 Starting GenBIApp...")
 
-        # self.llm_manager = LLMManager()
-        # self.llm = self.llm_manager.initialize_claude_model()
-     
         self.ui_manager = UIManager(self)
         self.data_manager = DataManager(self)
 
