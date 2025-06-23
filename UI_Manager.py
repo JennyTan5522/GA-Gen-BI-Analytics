@@ -26,9 +26,9 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.vectorstores import Chroma
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
 
-import sys
-import pysqlite3
-sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+# import sys
+# import pysqlite3
+# sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 
 import chromadb
 from langchain_anthropic import ChatAnthropic
