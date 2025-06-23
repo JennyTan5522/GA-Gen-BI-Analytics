@@ -26,9 +26,9 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.vectorstores import Chroma
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
 
-# import sys
-# import pysqlite3
-# sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+import sys
+import pysqlite3
+sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 
 import chromadb
 from langchain_anthropic import ChatAnthropic
@@ -799,7 +799,8 @@ class UIManager:
                                     self.saved_user_message(user_query, final_answer_str_format, response_output["intermediate_steps"])
                                     break
                                 except Exception as e:
-                                    st.error(f"Error while processing response: {e}")
+                                    self.app.logger.error(f"Error while generating response. Now fixing: {e}")
+                                    st.error(f"Error while processing response. Please try again.")
                                     break
                         else:
                             st.error("Failed to generate a response after multiple attempts. Please check your query or try again later.")
