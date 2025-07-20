@@ -1,41 +1,37 @@
-# Standard Libraries
 import os
 import json
+import asyncio
 from typing import Optional, List
+from uuid import uuid4
 
-# Core Libraries
+import pandas as pd
+import numpy as np
+
 import streamlit as st
 from streamlit_feedback import streamlit_feedback
 from pydantic import BaseModel, Field
 
-# Analysis Libraries
-import pandas as pd
-import numpy as np
+from sentence_transformers import SentenceTransformer
 
-# LangChain Core and Community Modules
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_core.documents import Document
-from uuid import uuid4
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain.retrievers import EnsembleRetriever
-from langchain.agents import create_react_agent, AgentExecutor
+from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 from langchain_core.messages import HumanMessage
-from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
-from langchain_core.output_parsers import StrOutputParser
-from langchain.vectorstores import Chroma
-from langchain.retrievers import BM25Retriever, EnsembleRetriever
 
-# import sys
-# import pysqlite3
-# sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+from langchain.agents import create_react_agent, AgentExecutor
 
-import chromadb
+from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
+from qdrant_client import QdrantClient, models
+from qdrant_client.http.models import Distance, SparseVectorParams, VectorParams
+
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_anthropic import ChatAnthropic
-from sentence_transformers import SentenceTransformer
-import asyncio
 
-# Custom Modules
+from tools.custom_sql_toolkit import CustomSQLToolkit
+from tools.dataset_summary_tool import dataset_summary_async
+from tools.question_recommendation_tool import generate_question_recommendations_async
+
 from const import (
     WARNING_MESSAGE,
     TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE,
@@ -43,11 +39,10 @@ from const import (
     FIX_FINAL_RESPONSE_TEMPLATE
 )
 from utils.agent_response_parser import CustomResponseParser
-from tools.dataset_summary_tool import dataset_summary_async
-from tools.question_recommendation_tool import generate_question_recommendations_async
 
 class SBERTEmbeddingFunction:
     def __init__(self):
+        device = "cpu"
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def embed_query(self, text):
@@ -83,7 +78,8 @@ class UIManager:
             ),
             "tables_info": {},
             "embedding_function": SBERTEmbeddingFunction(),
-            "feedback": False
+            "feedback": False,
+            "schema": None
         }
         for key, value in defaults.items():
             if key not in st.session_state:
@@ -91,13 +87,12 @@ class UIManager:
 
     def configure_sidebar(self):
         """
-        Configures the Streamlit sidebar with options for data connection, API key setup, and clearing message history.
+        Configures the Streamlit sidebar with options for data connection, API key setup, memory settings, and clearing message history.
         """
         with st.sidebar:
             st.markdown("## ⚙ Settings")
             st.write("Configure your settings below.")
             
-            # Data Connection
             with st.expander("Connect to Data", expanded=True):
                 connection_type = st.selectbox("Choose connection type", ("Upload CSV/Excel", "Connect to Database"))
 
@@ -112,11 +107,8 @@ class UIManager:
 
             st.markdown("---")
 
-            # Model Connection
             try:
                 st.title("API Access")
-                
-                # Input field for Claude API key
                 claude_api_key = st.text_input("Enter your Claude API Key:", type="password")
 
                 if st.button("Connect to Claude API"):
@@ -128,11 +120,8 @@ class UIManager:
                                 temperature=0,
                                 max_tokens=8000
                             )
-
                             st.session_state.llm = claude_llm
                             st.success("✅ Successfully connected to Claude API.")
-                            self.generate_dataset_overview()
-
                         except Exception as e:
                             st.error(f"❌ Failed to connect to Claude API: {e}")
                     else:
@@ -141,11 +130,12 @@ class UIManager:
             except:
                 st.error("Error while connecting to LLM Model.")
 
-            # Memory Settings
+            if connection_type == "Upload CSV/Excel" and "data" in st.session_state:
+                self.generate_dataset_overview()
+
             st.sidebar.write("🛠 Memory Settings")
             st.session_state.k = st.slider("Memory Size", 1, 10, st.session_state.k)
 
-            # Clear History Button
             if st.button("🗑 Clear Message History"):
                 if "messages" in st.session_state:
                     st.session_state.messages = []
@@ -166,39 +156,39 @@ class UIManager:
             self.handle_document_tab()
 
     def get_table_info(self, tables_info: dict):
+        """
+        Generates a formatted string containing detailed information about database tables and their columns.
+
+        Args:
+            tables_info (dict): Dictionary containing table metadata and column details.
+
+        Returns:
+            str: Formatted string with table summaries and column context information.
+        """
         all_tables_info = ""
         include_user_define_note = False
-        
+
         for table_name, full_table_info in tables_info.items():
             table_summary = full_table_info.get("table_summary", "")
             df = pd.DataFrame(full_table_info.get("table_columns_info", []))
 
-            # Step 1: Drop fully empty columns BEFORE filtering rows
             df = df.replace(r'^\s*$', np.nan, regex=True)
             filtered_data_df = df.dropna(axis=1, how="all")
-
-            # Step 2: Removes rows where all other columns except 'Dataset Column Name' are NaN.
             filtered_data_df = filtered_data_df[filtered_data_df.drop(columns=['Dataset Column Name']).notna().any(axis=1)]
 
-            # Check if user defined name is provided
             if 'User Define Column Name' in filtered_data_df.columns and \
-            filtered_data_df['User Define Column Name'].fillna("").str.strip().any():
+               filtered_data_df['User Define Column Name'].fillna("").str.strip().any():
                 include_user_define_note = True
 
-            # Step 3: Convert to JSON format
             extra_info_json = filtered_data_df.to_json(orient="records", indent=2)
 
-            # Step 4: Organize the info
             all_tables_info += f"Table {table_name}\n"
-
             if table_summary:
                 all_tables_info += f"Summary\n{table_summary}\n\n"
-
             all_tables_info += f"### Table Context Information\n{extra_info_json}\n"
             all_tables_info += "### End of Context\n\n"
 
-        # Add prefix explanation
-        explanation =""
+        explanation = ""
         if include_user_define_note:
             explanation += (
                 "- 'Dataset Column Name' refers to the original column name in the dataset.\n"
@@ -213,14 +203,14 @@ class UIManager:
         return explanation + all_tables_info
     
     def generate_dataset_overview(self):
-        # Generate a sumamry & question recommendations for CSV
+        """
+        Generates a summary and recommended questions for the uploaded dataset.
+        """
         num_rows = min(len(st.session_state.df), 11)
         sample_dataset = st.session_state.df[:num_rows]
         sample_dataset_str = sample_dataset.to_csv(sep="|", index=False, lineterminator="\n")
 
-        # Main function to run tasks concurrently
         async def main(llm, sample_dataset_str, rows, cols, schema):
-            # Run tasks concurrently using asyncio.gather
             self.app.logger.debug("Starting concurrent execution of summary and question recommendations...")
             excel_summary, question_recommendations = await asyncio.gather(
                 dataset_summary_async(llm, sample_dataset_str, rows, cols, schema),
@@ -229,24 +219,26 @@ class UIManager:
             self.app.logger.debug("Concurrent execution completed.")
             return excel_summary, question_recommendations
 
-        # Run the async main function
         excel_summary, question_recommendations = asyncio.run(
-            main(st.session_state.llm, sample_dataset_str, st.session_state.df.shape[0], st.session_state.df.shape[1], st.session_state.schema)
+            main(
+                st.session_state.llm,
+                sample_dataset_str,
+                st.session_state.df.shape[0],
+                st.session_state.df.shape[1],
+                st.session_state.schema
+            )
         )
-
         self.app.logger.debug(f"Excel Summary: {excel_summary}")
         self.app.logger.debug(f"Question Recommendation: {question_recommendations}")
 
         for key, value in {"excel_summary": excel_summary, "question_recommendations": question_recommendations}.items():
             if value:
-                st.session_state[key] = value
-
+                st.session_state[key]
+    
     def react_agent_toolkit(self, retriever_top_k_documents: str, additional_feedbacks: Optional[str] = None):
         """
         Creates and configures a ReAct agent toolkit with SQL, Python execution, and response validation capabilities.
-
-        This agent is designed to interact with a database, with tools: SQLDatabaseToolkit and FollowUpQuestionTool.
-
+      
         Args:
             retriever_top_k_documents (str): A string containing the top-k related documents retrieved from the vector store.
             additional_feedbacks: (Optional) Additional feedback or context provided from user to be included in the prompt template.
@@ -254,7 +246,7 @@ class UIManager:
         Returns:
             AgentExecutor: An agent executor capable of handling complex queries and reasoning through multiple tools.
         """
-        db_toolkit = SQLDatabaseToolkit(db=st.session_state.db, llm=st.session_state.llm)
+        db_toolkit = CustomSQLToolkit(db=st.session_state.db, llm=st.session_state.llm)
         tools = db_toolkit.get_tools()
         
         # Get the latest k pairs of messages from the chat history
@@ -274,7 +266,6 @@ class UIManager:
             latest_k_chat_history += f"--- Chat {idx} ---\n"
             latest_k_chat_history += f"User: {human}\n"
             try:
-                # Attempt to parse the assistant response as JSON
                 content_json = json.loads(ai)
                 sql = content_json.get("SQL")
                 text_response = content_json.get("TextResponse")
@@ -354,14 +345,21 @@ class UIManager:
             st.error(f"Error while retrieving the top-k documents: {e}")
     
     def regenerate_final_answer_prompt(self, regenerate_query_context: str):
+        """
+        Generates a prompt for the LLM to incorporate additional user feedback when regenerating a final answer.
+
+        Args:
+            regenerate_query_context (str): The context or feedback provided by the user for regenerating the answer.
+
+        Returns:
+            str: A formatted prompt string including the user's feedback.
+        """
         return f"""
             ### Additional User Feedback:
             The user provided feedback on the previous question. This could be:
             - A corrected SQL query provided by the user if the generated one was wrong.
             - An explanation from the user if the original question was flawed or unanswerable. 
             (Note: The user might also provide an invalid or incorrect explanation — you must validate it logically based on the question and schema.)
-
-            {regenerate_query_context}
         """
     
     def fix_final_answer(self, original_response: str, error_msg: str):
@@ -386,15 +384,19 @@ class UIManager:
         except Exception as e:
             st.error(f"An error occured while fixing the final answer.{e}")
     
-    def invoke_agent_response(self, agent_executor: AgentExecutor, user_query: str, user_feedback:str = "", is_user_feedback = False):
+    def invoke_agent_response(self, agent_executor: AgentExecutor, user_query: str, user_feedback: str = "", is_user_feedback: bool = False):
         """
-        Invokes the agent to (1) generates a response, (2) parse the final answer in pydantic format, (3) display the final answer in UI, (4) saves it to messages.
+        Invokes the agent to generate a response, parse the final answer, display it in the UI, and save it to messages.
+
         Args:
             agent_executor (AgentExecutor): The agent executor configured with tools and prompts.
             user_query (str): The query provided by the user.
-            user_feedback (bool, optional): Indicates if the query includes user feedback. Defaults to False.
-        """
+            user_feedback (str, optional): Additional feedback or request from the user. Defaults to "".
+            is_user_feedback (bool, optional): Indicates if the query includes user feedback. Defaults to False.
 
+        Returns:
+            tuple: A tuple containing the message used for the agent and the agent's response text.
+        """
         if is_user_feedback:
             query_input = f"Previous User Question: {user_query}\nCurrent User Feedback or Request: {user_feedback}"
             return_message = user_feedback
@@ -445,10 +447,6 @@ class UIManager:
         """
         Displays a feedback form for users to provide feedback on the LLM response.
 
-        The feedback form allows users to:
-        - Provide a thumbs-up or thumbs-down rating for the response.
-        - Optionally include a reason for their feedback or suggest a corrected SQL query if the response was incorrect.
-
         Args:
             user_query (str): The original query provided by the user, used to regenerate the response if feedback is submitted.
         """  
@@ -458,27 +456,27 @@ class UIManager:
             streamlit_feedback(feedback_type="thumbs", optional_text_label="[Optional] 👍 Save this response for feedback reference 👎 Regenerate or provide corrections", align="flex-start", key=key)
             st.form_submit_button('Submit Response', on_click=lambda: self.handle_user_feedback(user_query, message_index)) 
 
-    def add_documents_to_vector_store(self, sql_query_documents: list, uuids: list):
+    def add_documents_to_vector_store(self, sql_query_documents: list, uuids: list, sql_query_input: dict):
+        """
+        Adds SQL query documents to the vector store.
+
+        Args:
+            sql_query_documents (list): List of Document objects to add to the vector store.
+            uuids (list): List of unique identifiers for the documents.
+            sql_query_input (dict): Dictionary containing the user query and SQL query to be saved.
+        """
         st.session_state.vector_store.add_documents(documents=sql_query_documents, ids=uuids)
-        st.session_state.sql_query_documents.append(sql_query_documents[0])
-        self.app.logger.info(f"Add Documents into Vector Store: \n{sql_query_documents}")
-        bm25_retriever = BM25Retriever.from_documents(st.session_state.sql_query_documents)
-        st.session_state.retriever = EnsembleRetriever(
-            retrievers = [bm25_retriever, st.session_state.vector_store.as_retriever()],
-            weights = [0.3, 0.7]
-        )
+        st.session_state.sql_query_documents.append(sql_query_input)
+        self.app.logger.info(f"Add Documents into Vector Store: \n{sql_query_input}")
         st.success("Document saved successfully! Document has been added and stored in the vector store for future reference.")
 
     def handle_user_feedback(self, user_query: str, message_index: int):
         """
-        Handles user feedback for the last generated response and regenerates the agent's response based on the feedback.
-
-        This method retrieves the last message from the session's chat memory, extracts the context of the previous 
-        response (e.g., SQL query or answer), and combines it with the user's feedback. It then uses this information 
-        to regenerate a new response by invoking the agent with the updated context.
+        Processes user feedback for the last response and either regenerates the agent's answer if negative or saves it to the vector store if positive.
 
         Args:
-            user_query (str): The original query provided by the user.
+            user_query (str): The user's original query.
+            message_index (int): The feedback message index in session state.
         """
         if not len(st.session_state.memory.chat_memory.messages) > 0:
             return
@@ -521,9 +519,10 @@ class UIManager:
             else:
                 # If the feedback is thumbs up, saved the response into the vector store
                 # TODO: Handle the case where if the response is feedback then cannot save to vector store
-                sql_query_document = [Document(page_content=f"User Query: {user_query}\nSQL Query: {sql_query}", metadata={"source": st.session_state.file_name})]
+                page_content = {"User Query": user_query.strip(), "SQL Query": sql_query.strip()}
+                sql_query_document = [Document(page_content=json.dumps(page_content), metadata={"source": st.session_state.file_name})]
                 uuids = [str(uuid4())]
-                self.add_documents_to_vector_store(sql_query_document, uuids)
+                self.add_documents_to_vector_store(sql_query_document, uuids, page_content)
 
         st.session_state.feedback = True
 
@@ -552,13 +551,14 @@ class UIManager:
                     
     def display_response(self, sql: List[str], response: str, code_block: str, follow_up_questions: List[str], agent_thoughts: str = None):
         """
-        Displays the response from an SQL query or a generated result, optionally rendering a visualization.
+        Displays the SQL query results, textual response, visualization code, follow-up questions, and agent reasoning in the Streamlit UI.
 
         Args:
-            sql (str): The SQL query used to generate the response.
+            sql (List[str]): List of SQL queries used to generate the response.
             response (str): The textual response generated from the SQL query or retrieval process.
             code_block (str): A Python code block that generates a visualization.
-            agent_thoughts (str, optional): Agent's reasoning or steps.
+            follow_up_questions (List[str]): Suggested follow-up questions for further analysis.
+            agent_thoughts (str, optional): Agent's reasoning or steps taken to arrive at the final answer.
         """
         try:
             sql_is_blank = len(sql) == 0  
@@ -656,7 +656,6 @@ class UIManager:
                 
             if "question_recommendations" in st.session_state:
                 grouped_questions = {}
-                # Organize questions by category
                 for item in st.session_state.question_recommendations["questions"]:
                     category = item["category"]
                     question = item["question"]
@@ -778,11 +777,8 @@ class UIManager:
                         attempt = 0
                         while attempt < MAX_RETRIES:
                             try:
-                                # Invoke the agent response
                                 retriever_top_k_documents = self.rag_top_k_related_documents(user_query)
                                 agent_executor = self.react_agent_toolkit(retriever_top_k_documents = retriever_top_k_documents)
-
-                                # Get the prompt template
                                 user_query, response_output = self.invoke_agent_response(agent_executor, user_query)
                                 sql, text_response, code_block, follow_up_questions, final_answer_str_format = self.final_response_output_parser(response_output["output"])
                                 self.display_response(sql, text_response, code_block, follow_up_questions, response_output["intermediate_steps"])
@@ -812,31 +808,20 @@ class UIManager:
             return 
         
         st.write("#### Dataset Table Selection")
-        tables = st.session_state.sql_inspector.get_table_names()
-        self.app.logger.info(f"Tables in database: {tables}")
-        selected_table = st.selectbox("Choose a table from the database for Data Preview:", tables)
-        st.session_state.df = pd.read_sql(f'SELECT * FROM "{selected_table}"', st.session_state.db._engine)
+
+        selected_table = st.selectbox("Choose a table from the database for Data Preview:", st.session_state.table_names)
+        if st.session_state.db.dialect == "bigquery":
+            query = f'SELECT * FROM `{selected_table}`'
+        else:
+            query = f'SELECT * FROM "{selected_table}"'
+        st.session_state.df = pd.read_sql(query, st.session_state.db._engine)
+
         st.session_state.df = st.session_state.df.dropna(axis=1, how="all")
         total_rows = st.session_state.df.shape[0]
 
-        # Default values
         table_summary = ""
         editable_data = None
 
-        # Check if saved file exists
-        json_path = f"data/{selected_table}.json"
-        if os.path.exists(json_path):
-            with open(json_path, "r") as f:
-                saved_data = json.load(f)
-
-            if selected_table in saved_data:
-                full_table_info = saved_data[selected_table]
-                table_summary = full_table_info.get("table_summary", "")
-                editable_data = pd.DataFrame(full_table_info.get("table_columns_info", []))
-
-                # Update the table variable
-                st.session_state.tables_info[selected_table] = full_table_info
-                
         with st.form("table_data"):
             # Allow user to provide a short table summary
             st.write("#### Table Summary")
@@ -878,10 +863,6 @@ class UIManager:
                     "table_columns_info": edited_table_data.to_dict(orient="records")
                 }
                 st.session_state.tables_info[selected_table] = full_table_info
-
-                # Save as JSON file
-                with open(f"data/{selected_table}.json", "w") as f:
-                    json.dump(st.session_state.tables_info, f, indent=2)
 
         st.divider()
 
@@ -961,16 +942,18 @@ class UIManager:
 
         # Empty String Count: Value present but is ""
         df_info["Empty Count"] = df_info["Feature"].apply(
-            lambda col: (st.session_state.df[col].str.strip() == "").sum()
-            if st.session_state.df[col].dtype == 'object'
-            else 0
+            lambda col: (
+                st.session_state.df[col].astype(str).str.strip().eq("").sum()
+                if pd.api.types.is_string_dtype(st.session_state.df[col]) or pd.api.types.is_object_dtype(st.session_state.df[col])
+                else 0
+            )
         )
 
         total_rows = len(st.session_state.df)
         def calculate_missing_count(col):
             series = st.session_state.df[col]
-            if series.dtype == 'object':
-                missing = (series.isna() | (series.str.strip() == "")).sum()
+            if pd.api.types.is_string_dtype(series) or pd.api.types.is_object_dtype(series):
+                missing = (series.isna() | series.astype(str).str.strip().eq("")).sum()
             else:
                 missing = series.isna().sum()
             percent = (missing / total_rows) * 100
@@ -1002,19 +985,38 @@ class UIManager:
         if ("data" not in st.session_state) and ("db" not in st.session_state):
             st.warning(WARNING_MESSAGE)
             return 
-    
-        chromadb_client = chromadb.PersistentClient(path="vector_store")
-        st.markdown(st.session_state.file_name)
-        collection = chromadb_client.get_or_create_collection(name=st.session_state.file_name)
-        st.session_state.vector_store = Chroma(collection_name=st.session_state.file_name, embedding_function=st.session_state.embedding_function, persist_directory="vector_store")
-        st.session_state.sql_query_documents = st.session_state.vector_store.similarity_search("", k=1000)
 
-        if len(st.session_state.sql_query_documents) > 0:
-            bm25_retriever = BM25Retriever.from_documents(st.session_state.sql_query_documents)
-            st.session_state.retriever = EnsembleRetriever(
-                retrievers = [bm25_retriever, st.session_state.vector_store.as_retriever()],
-                weights = [0.3, 0.7]
+        if "vector_store" not in st.session_state:
+            st.markdown("Initializing the vector store for SQL Query Documents...")
+            qdrant_host = os.getenv("QDRANT_HOST")
+            qdrant_api_key = os.getenv("QDRANT_API_KEY")
+            
+            client = QdrantClient(
+                url=qdrant_host,
+                prefer_grpc=True,
+                api_key=qdrant_api_key,
             )
+
+            # Create a QdrantVectorStore instance
+            st.session_state.vector_store = QdrantVectorStore(
+                client=client,
+                collection_name="rank_solution_gen_bi_collection",
+                embedding=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2"),
+                sparse_embedding=FastEmbedSparse(model_name="Qdrant/bm25"),
+                retrieval_mode=RetrievalMode.HYBRID,
+                vector_name="dense_embedding",
+                sparse_vector_name="sparse_embedding",
+            )
+
+            st.session_state.retriever = st.session_state.vector_store.as_retriever(search_type="mmr", search_kwargs={"k": 5})
+
+            retrieved_docs = client.scroll(
+                collection_name="rank_solution_gen_bi_collection",
+                limit=1000,
+                with_payload=True,
+                with_vectors=False,
+            )
+            st.session_state.sql_query_documents = retrieved_docs[0]
 
         st.write("### 📄 SQL Query Documents")
 
@@ -1031,10 +1033,10 @@ class UIManager:
                 elif not confirm_save:
                     st.warning("Please confirm you want to save this document.")
                 else:
-                    page_content = f"User Query: {user_query_input.strip()}\nSQL Query: {sql_query_input.strip()}"
-                    new_doc = [Document(page_content=page_content, metadata={"source": st.session_state.file_name})]
+                    page_content = {"User Query": user_query_input.strip(), "SQL Query": sql_query_input.strip()}
+                    new_doc = [Document(page_content=json.dumps(page_content), metadata={"source": st.session_state.file_name})]
                     uuids = [str(uuid4())]
-                    self.add_documents_to_vector_store(new_doc, uuids)
+                    self.add_documents_to_vector_store(new_doc, uuids, page_content)
 
         # --- Search for similar documents ---
         st.divider()
@@ -1048,20 +1050,20 @@ class UIManager:
                     st.success(f"Top {len(similar_docs)} similar results:")
                     doc_data = []
                     for doc in similar_docs:
-                        question = ""
-                        answer = ""
-                        if hasattr(doc, "page_content") and isinstance(doc.page_content, str):
-                            parts = doc.page_content.split("SQL Query:", 1)
-                            if len(parts) == 2:
-                                question = parts[0].replace("User Query:", "").strip()
-                                answer = parts[1].strip()
-                            else:
-                                question = doc.page_content.strip()
-                        doc_data.append({
-                            "User Query": question,
-                            "SQL Query": answer,
-                            "Database": doc.metadata.get("source", "")
-                        })
+                        try:
+                            page_content = json.loads(doc.payload['page_content'])
+                            question = page_content.get("User Query", "").strip()
+                            answer = page_content.get("SQL Query", "").strip()
+                            doc_data.append({
+                                "User Query": question,
+                                "SQL Query": answer,
+                                "Database": doc.payload['metadata']['source']
+                            })
+                        except Exception as e:
+                            print(f"Error processing document: {e}")
+                            question = ""
+                            answer = ""
+                    
                     df = pd.DataFrame(doc_data)
                     df.index = range(1, len(df) + 1)
                     st.dataframe(df, use_container_width=True)
@@ -1075,7 +1077,7 @@ class UIManager:
             st.info("No documents found in the vector store.")
             return
 
-        # ---Display the SQL Documents ---
+        # Display the SQL Documents
         doc_data = []
         for doc in documents:
             question = ""

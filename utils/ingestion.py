@@ -1,12 +1,11 @@
 import os
 import re
-import tempfile
 from collections import defaultdict
 from typing import List, Tuple
 
 import pandas as pd
 from bs4 import BeautifulSoup
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect
 from Logger_Manager import logger
 
 from langchain.schema.document import Document
@@ -298,15 +297,12 @@ def data_ingestion(data, filename: str):
             temp_file_path = os.path.expanduser(f"~/flexpg-gen-bi/data/{data.name}")
             os.makedirs(os.path.dirname(temp_file_path), exist_ok=True)
 
-            # Write file
             with open(temp_file_path, "wb") as f:
                 f.write(data.getbuffer())
 
             # Load the selected sheet using UnstructuredExcelLoader
             loader = UnstructuredExcelLoader(temp_file_path, mode='elements')
             documents = loader.load() 
-
-            # Extract and process structured tables
             excel_html_document = extract_table_html(file_name, documents)
             structured_excel_documents = chunk_html_tables(excel_html_document)
             results = group_table_elements(structured_excel_documents, sql_engine)
@@ -321,13 +317,57 @@ def data_ingestion(data, filename: str):
     return results, sql_database, sql_inspector, structured_excel_documents 
 
 def data_ingestion_window(driver: str, server: str, port: str, database: str) -> SQLDatabase:
+    """
+    Establishes a connection to a Microsoft SQL Server database and returns an SQLDatabase instance.
+
+    Args:
+        driver (str): ODBC driver name for SQL Server.
+        server (str): Hostname or IP address of the SQL Server.
+        port (str): Port number for the SQL Server.
+        database (str): Name of the database to connect to.
+
+    Returns:
+        SQLDatabase: An instance of SQLDatabase connected to the specified SQL Server database.
+    """
     db_uri = ("mssql+pyodbc:///?odbc_connect=DRIVER={" + driver + "}" + f";SERVER={server},{port};DATABASE={database};readonly=True;Trusted_Connection=yes;")
     return SQLDatabase.from_uri(db_uri, lazy_table_reflection=True)
 
 def data_ingestion_mysql(server: str, username: str, password: str, port:str, database: str) -> SQLDatabase:
+    """
+    Establishes a connection to a MySQL database and returns an SQLDatabase instance.
+
+    Args:
+        server (str): Hostname or IP address of the MySQL server.
+        username (str): Username for authentication.
+        password (str): Password for authentication.
+        port (str): Port number for the MySQL server.
+        database (str): Name of the database to connect to.
+
+    Returns:
+        SQLDatabase: An instance of SQLDatabase connected to the specified MySQL database.
+    """
     db_uri = (
             f"mysql+mysqlconnector://{username}:{password}"
             f"@{server}:{port}"
             f"/{database}"
         )
     return SQLDatabase.from_uri(db_uri, lazy_table_reflection=True)
+
+def data_ingestion_big_query(service_account_file: str, project_id: str, dataset_id: str, table_names: list = ["search_analytics_sgmytaxi"]) -> Tuple[SQLDatabase, object]:
+    """
+    Establishes a connection to a BigQuery database and returns an SQLDatabase instance and SQL inspector.
+
+    Args:
+        service_account_file (str): Path to the Google Cloud service account JSON file.
+        project_id (str): Google Cloud project ID.
+        dataset_id (str): BigQuery dataset ID.
+        table_names (list): List of table names to include in the SQLDatabase instance.
+
+    Returns:
+        Tuple[SQLDatabase, object]: An instance of SQLDatabase connected to the specified BigQuery dataset and the SQL inspector.
+    """
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account_file
+    sqlalchemy_url = f"bigquery://{project_id}/{dataset_id}"
+    sql_engine = create_engine(sqlalchemy_url)
+    sql_inspector = inspect(sql_engine)
+    return SQLDatabase(sql_engine, include_tables=table_names), sql_inspector
