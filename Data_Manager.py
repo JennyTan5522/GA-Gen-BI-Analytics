@@ -22,8 +22,6 @@ class DataManager:
                 table_name, (df_cleaned, schema) = next(iter(results.items()))
                 st.session_state.schema = schema
                 st.session_state.df = df_cleaned
-                st.session_state.file_name = st.session_state.data.name.split(".")[0]
-                self.app.logger.debug(f"Filename: ", st.session_state.file_name)
 
             if st.session_state.data.name.endswith(".xlsx"): 
                 self.app.logger.info("Load Excel Data into Vector DB...")
@@ -32,6 +30,8 @@ class DataManager:
                 st.session_state.bm25_retriever.k = 3
                 self.app.logger.info("Completed loading Excel Data into Vector DB.")
 
+            st.session_state.file_name = st.session_state.data.name.split(".")[0]
+            self.app.logger.debug(f"Filename: {st.session_state.file_name}")
             st.session_state.table_names = st.session_state.sql_inspector.get_table_names()
                
         except Exception as e:
@@ -94,6 +94,7 @@ class DataManager:
 
             dataset_ids = [dataset.dataset_id for dataset in datasets]
             selected_dataset_id = st.selectbox("Select Datasets", dataset_ids)
+            st.session_state.selected_dataset_id = selected_dataset_id
 
             table_names = st.multiselect(
                 "Select Tables",

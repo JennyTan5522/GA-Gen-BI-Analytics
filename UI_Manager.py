@@ -6,11 +6,9 @@ from uuid import uuid4
 
 import pandas as pd
 import numpy as np
-
 import streamlit as st
 from streamlit_feedback import streamlit_feedback
 from pydantic import BaseModel, Field
-
 from sentence_transformers import SentenceTransformer
 
 from langchain.memory import ConversationBufferWindowMemory
@@ -18,7 +16,6 @@ from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 from langchain_core.messages import HumanMessage
-
 from langchain.agents import create_react_agent, AgentExecutor
 
 from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
@@ -28,6 +25,7 @@ from qdrant_client.http.models import Distance, SparseVectorParams, VectorParams
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_anthropic import ChatAnthropic
 
+# Local application/library imports
 from tools.custom_sql_toolkit import CustomSQLToolkit
 from tools.dataset_summary_tool import dataset_summary_async
 from tools.question_recommendation_tool import generate_question_recommendations_async
@@ -42,7 +40,6 @@ from utils.agent_response_parser import CustomResponseParser
 
 class SBERTEmbeddingFunction:
     def __init__(self):
-        device = "cpu"
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def embed_query(self, text):
@@ -79,7 +76,9 @@ class UIManager:
             "tables_info": {},
             "embedding_function": SBERTEmbeddingFunction(),
             "feedback": False,
-            "schema": None
+            "schema": None,
+            "selected_dataset_id": "",
+            "sql_query_documents": []
         }
         for key, value in defaults.items():
             if key not in st.session_state:
@@ -130,7 +129,7 @@ class UIManager:
             except:
                 st.error("Error while connecting to LLM Model.")
 
-            if connection_type == "Upload CSV/Excel" and "data" in st.session_state:
+            if connection_type == "Upload CSV/Excel" and self.is_data_and_llm_connected():
                 self.generate_dataset_overview()
 
             st.sidebar.write("🛠 Memory Settings")
@@ -154,6 +153,23 @@ class UIManager:
 
         with document_tab:
             self.handle_document_tab()
+
+    def is_data_and_llm_connected(self):
+        """
+        Checks whether the user has successfully connected to both a data source (file upload or database)
+        and an LLM (API key entered and model initialized).
+
+        Returns:
+            bool: True if both a data source and LLM are connected, False otherwise.
+                  Displays a warning message in the UI if either is missing.
+        """
+        if "data" not in st.session_state and "db" not in st.session_state:
+            st.warning(WARNING_MESSAGE)
+            return False
+        if "llm" not in st.session_state:
+            st.warning("Please enter the API key to start conversation")
+            return False
+        return True
 
     def get_table_info(self, tables_info: dict):
         """
@@ -181,7 +197,6 @@ class UIManager:
                 include_user_define_note = True
 
             extra_info_json = filtered_data_df.to_json(orient="records", indent=2)
-
             all_tables_info += f"Table {table_name}\n"
             if table_summary:
                 all_tables_info += f"Summary\n{table_summary}\n\n"
@@ -231,9 +246,9 @@ class UIManager:
         self.app.logger.debug(f"Excel Summary: {excel_summary}")
         self.app.logger.debug(f"Question Recommendation: {question_recommendations}")
 
-        for key, value in {"excel_summary": excel_summary, "question_recommendations": question_recommendations}.items():
-            if value:
-                st.session_state[key]
+        # for key, value in {"excel_summary": excel_summary, "question_recommendations": question_recommendations}.items():
+        #     if value:
+        #         st.session_state[key]
     
     def react_agent_toolkit(self, retriever_top_k_documents: str, additional_feedbacks: Optional[str] = None):
         """
@@ -517,10 +532,8 @@ class UIManager:
                 sql, text_response, code_block, follow_up_questions, final_answer_str_format = self.final_response_output_parser(response_output["output"])
                 self.saved_user_message(user_query, final_answer_str_format, response_output["intermediate_steps"])
             else:
-                # If the feedback is thumbs up, saved the response into the vector store
-                # TODO: Handle the case where if the response is feedback then cannot save to vector store
-                page_content = {"User Query": user_query.strip(), "SQL Query": sql_query.strip()}
-                sql_query_document = [Document(page_content=json.dumps(page_content), metadata={"source": st.session_state.file_name})]
+                page_content = {"User Query": user_query, "SQL Query": sql_query}
+                sql_query_document = [Document(page_content=json.dumps(page_content), metadata={"table_name": st.session_state.selected_table})]
                 uuids = [str(uuid4())]
                 self.add_documents_to_vector_store(sql_query_document, uuids, page_content)
 
@@ -630,186 +643,183 @@ class UIManager:
             st.error(f"An error occurred while displaying the response: {e}")
 
     def handle_response_tab(self):
-        if "data" not in st.session_state and "db" not in st.session_state:
-            st.warning(WARNING_MESSAGE)
-        elif "llm" not in st.session_state:
-            st.warning("Please enter the API key to start conversation")
-        else:
-            if "messages" not in st.session_state:
-                st.session_state["messages"] = [{"role": "assistant", "content": "Hello! I'm your SQL Assistant. How can I assist you today?"}]
-                self.app.logger.debug("Session messages initialized.")
-                st.session_state["selected_mode"] = "SQL to Chart 📊" 
+        if not self.is_data_and_llm_connected():
+            return
 
-            if "excel_summary" in st.session_state:
-                summary_html = st.session_state.excel_summary.replace("\n", "<br>")
+        if "messages" not in st.session_state:
+            st.session_state["messages"] = [{"role": "assistant", "content": "Hello! I'm your SQL Assistant. How can I assist you today?"}]
+            self.app.logger.debug("Session messages initialized.")
+            st.session_state["selected_mode"] = "SQL to Chart 📊" 
 
-                with st.expander("📃 Data Summary"):
-                    st.markdown(f"""<p style="font-size: 11px; color: gray;"> An enriched data summary with semantic types and descriptions.</p>""",unsafe_allow_html=True)
-                    st.markdown(
-                        f"""
-                        <div style="font-size: 11px; color: gray; text-align: justify; background-color: #f0f0f0; border-radius: 8px; padding: 10px; ">
-                            {summary_html} 
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+        if "excel_summary" in st.session_state:
+            summary_html = st.session_state.excel_summary.replace("\n", "<br>")
+            with st.expander("📃 Data Summary"):
+                st.markdown(f"""<p style="font-size: 11px; color: gray;"> An enriched data summary with semantic types and descriptions.</p>""",unsafe_allow_html=True)
+                st.markdown(
+                    f"""
+                    <div style="font-size: 11px; color: gray; text-align: justify; background-color: #f0f0f0; border-radius: 8px; padding: 10px; ">
+                        {summary_html} 
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+        if "question_recommendations" in st.session_state:
+            grouped_questions = {}
+            for item in st.session_state.question_recommendations["questions"]:
+                category = item["category"]
+                question = item["question"]
                 
-            if "question_recommendations" in st.session_state:
-                grouped_questions = {}
-                for item in st.session_state.question_recommendations["questions"]:
-                    category = item["category"]
-                    question = item["question"]
-                    
-                    if category not in grouped_questions:
-                        grouped_questions[category] = []
-                    grouped_questions[category].append(question)
+                if category not in grouped_questions:
+                    grouped_questions[category] = []
+                grouped_questions[category].append(question)
 
-                with st.expander("💡 Goal Exploration"):
-                    st.markdown(f"""<p style="font-size: 11px; color: gray;"> A list of automatically generated data exploration goals based on the dataset given.</p>""",unsafe_allow_html=True)
-                    categories = list(grouped_questions.keys())  
-                    num_columns = 3 
-                    columns = st.columns(num_columns)  
+            with st.expander("💡 Goal Exploration"):
+                st.markdown(f"""<p style="font-size: 11px; color: gray;"> A list of automatically generated data exploration goals based on the dataset given.</p>""",unsafe_allow_html=True)
+                categories = list(grouped_questions.keys())  
+                num_columns = 3 
+                columns = st.columns(num_columns)  
 
-                    # Iterate over categories and distribute them in columns
-                    for index, category in enumerate(categories):
-                        col = columns[index % num_columns]  
-                        with col.container():
-                            st.markdown(
-                                f"""
-                                <div style="border-radius: 8px; padding-left: 10px; background-color: #f9f9f9; 
-                                            box-shadow: 2px 2px 5px rgba(0,0,0,0.1); width: 100%;">
-                                    <h4 style="color: #333; font-size: 13px; font-weight: bold; margin: 0;">{category}</h4>
-                                </div>
-                                <div style="padding-left: 15px; margin-top: 5px;">
-                                    <ul style="padding-left: 15px; color: #333;">
-                                        {''.join(f'<li style="margin-bottom: 4px; font-size: 11px; text-align: justify;">{question}</li>' for question in grouped_questions[category])}
-                                    </ul>
-                                </div>
-                                """,
-                                unsafe_allow_html=True
-                            )
+                # Iterate over categories and distribute them in columns
+                for index, category in enumerate(categories):
+                    col = columns[index % num_columns]  
+                    with col.container():
+                        st.markdown(
+                            f"""
+                            <div style="border-radius: 8px; padding-left: 10px; background-color: #f9f9f9; 
+                                        box-shadow: 2px 2px 5px rgba(0,0,0,0.1); width: 100%;">
+                                <h4 style="color: #333; font-size: 13px; font-weight: bold; margin: 0;">{category}</h4>
+                            </div>
+                            <div style="padding-left: 15px; margin-top: 5px;">
+                                <ul style="padding-left: 15px; color: #333;">
+                                    {''.join(f'<li style="margin-bottom: 4px; font-size: 11px; text-align: justify;">{question}</li>' for question in grouped_questions[category])}
+                                </ul>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
 
-            # Display chat history
-            last_query = ""
-            for idx, message in enumerate(st.session_state.messages):
-                role = message.get("role")
-                if role == "user":
-                    with st.chat_message("user"):
-                        content = message["content"]
-                        last_query = content
+        # Display chat history
+        last_query = ""
+        for idx, message in enumerate(st.session_state.messages):
+            role = message.get("role")
+            if role == "user":
+                with st.chat_message("user"):
+                    content = message["content"]
+                    last_query = content
+                    st.write(content)
+
+            if role == "assistant":
+                with st.chat_message("assistant"):
+                    content = message["content"]
+                    try:
+                        # Converts the str response to dict format
+                        content_json = json.loads(content)
+                        self.app.logger.debug(f"Content JSON: {content_json}")
+                        self.display_response(content_json['SQL'], content_json['TextResponse'], content_json['Code'], content_json['FollowUpQuestions'], message["agent_thinking_process"])
+                    except:
                         st.write(content)
 
-                if role == "assistant":
-                    with st.chat_message("assistant"):
-                        content = message["content"]
+        if len(st.session_state.messages) > 1 and st.session_state.feedback:
+            self.display_feedback_form(last_query)
+            st.session_state.feedback = False
+
+        # Style to fix the chatbot position
+        st.markdown(
+            """
+            <style>
+            /* Chat input box */
+            .stChatInput {
+                position: fixed;
+                bottom: 25px; 
+                left: 350px; 
+                width: calc(100% - 350px);
+                background-color: white;
+                padding: 10px;
+                box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+                z-index: 1000;
+                border-radius: 10px;
+            }
+
+            /* Disclaimer text */
+            .disclaimer {
+                position: fixed;
+                bottom: 0px; 
+                margin-bottom: -5px;
+                left: 350px;
+                width: calc(100% - 350px);
+                font-size: 11px;
+                color: gray;
+                text-align: center;
+                background-color: white;
+                padding: 5px 10px;
+                z-index: 999; /* Lower z-index to stay below chat input */
+            }
+
+            /* Radio button styling */
+            .stRadio > div {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+                margin-bottom: 10px;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            """
+            <p class="disclaimer">
+                <strong> Disclaimer:</strong> Gen BI system may make mistakes; review results and use your judgment. 
+            </p>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        user_query = st.chat_input(placeholder="Ask me anything!")
+
+        if user_query:
+            st.chat_message("user").write(user_query)
+            with st.chat_message("assistant"):
+                with st.spinner("We are preparing a response to your question. Please allow up to one minute for completion...."):
+                    MAX_RETRIES = 3
+                    attempt = 0
+                    while attempt < MAX_RETRIES:
                         try:
-                            # Converts the str response to dict format
-                            content_json = json.loads(content)
-                            self.app.logger.debug(f"Content JSON: {content_json}")
-                            self.display_response(content_json['SQL'], content_json['TextResponse'], content_json['Code'], content_json['FollowUpQuestions'], message["agent_thinking_process"])
-                        except:
-                            st.write(content)
-
-            if len(st.session_state.messages) > 1 and st.session_state.feedback:
-                self.display_feedback_form(last_query)
-                st.session_state.feedback = False
-
-            # Style to fix the chatbot position
-            st.markdown(
-                """
-                <style>
-                /* Chat input box */
-                .stChatInput {
-                    position: fixed;
-                    bottom: 25px; 
-                    left: 350px; 
-                    width: calc(100% - 350px);
-                    background-color: white;
-                    padding: 10px;
-                    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-                    z-index: 1000;
-                    border-radius: 10px;
-                }
-
-                /* Disclaimer text */
-                .disclaimer {
-                    position: fixed;
-                    bottom: 0px; 
-                    margin-bottom: -5px;
-                    left: 350px;
-                    width: calc(100% - 350px);
-                    font-size: 11px;
-                    color: gray;
-                    text-align: center;
-                    background-color: white;
-                    padding: 5px 10px;
-                    z-index: 999; /* Lower z-index to stay below chat input */
-                }
-
-                /* Radio button styling */
-                .stRadio > div {
-                    display: flex;
-                    gap: 10px;
-                    align-items: center;
-                    margin-bottom: 10px;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.markdown(
-                """
-                <p class="disclaimer">
-                    <strong> Disclaimer:</strong> Gen BI system may make mistakes; review results and use your judgment. 
-                </p>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            user_query = st.chat_input(placeholder="Ask me anything!")
-
-            if user_query:
-                st.chat_message("user").write(user_query)
-                with st.chat_message("assistant"):
-                    with st.spinner("We are preparing a response to your question. Please allow up to one minute for completion...."):
-                        MAX_RETRIES = 3
-                        attempt = 0
-                        while attempt < MAX_RETRIES:
+                            retriever_top_k_documents = self.rag_top_k_related_documents(user_query)
+                            agent_executor = self.react_agent_toolkit(retriever_top_k_documents = retriever_top_k_documents)
+                            user_query, response_output = self.invoke_agent_response(agent_executor, user_query)
+                            sql, text_response, code_block, follow_up_questions, final_answer_str_format = self.final_response_output_parser(response_output["output"])
+                            self.display_response(sql, text_response, code_block, follow_up_questions, response_output["intermediate_steps"])
+                            self.saved_user_message(user_query, final_answer_str_format, response_output["intermediate_steps"])
+                            self.display_feedback_form(user_query)
+                            break
+                        except Exception as e:
                             try:
-                                retriever_top_k_documents = self.rag_top_k_related_documents(user_query)
-                                agent_executor = self.react_agent_toolkit(retriever_top_k_documents = retriever_top_k_documents)
-                                user_query, response_output = self.invoke_agent_response(agent_executor, user_query)
-                                sql, text_response, code_block, follow_up_questions, final_answer_str_format = self.final_response_output_parser(response_output["output"])
+                                self.app.logger.error(f"Error while generating response. Now fixing: {e}")
+                                attempt += 1
+                                fix_output = self.fix_final_answer(original_response=response_output["output"], error_msg=e)
+                                sql, text_response, code_block, follow_up_questions, final_answer_str_format = self.final_response_output_parser(fix_output)
                                 self.display_response(sql, text_response, code_block, follow_up_questions, response_output["intermediate_steps"])
                                 self.saved_user_message(user_query, final_answer_str_format, response_output["intermediate_steps"])
-                                self.display_feedback_form(user_query)
                                 break
                             except Exception as e:
-                                try:
-                                    self.app.logger.error(f"Error while generating response. Now fixing: {e}")
-                                    attempt += 1
-                                    fix_output = self.fix_final_answer(original_response=response_output["output"], error_msg=e)
-                                    sql, text_response, code_block, follow_up_questions, final_answer_str_format = self.final_response_output_parser(fix_output)
-                                    self.display_response(sql, text_response, code_block, follow_up_questions, response_output["intermediate_steps"])
-                                    self.saved_user_message(user_query, final_answer_str_format, response_output["intermediate_steps"])
-                                    break
-                                except Exception as e:
-                                    self.app.logger.error(f"Error while generating response. Now fixing: {e}")
-                                    st.error(f"Error while processing response. Please try again.")
-                                    break
-                        else:
-                            st.error("Failed to generate a response after multiple attempts. Please check your query or try again later.")
-                            self.app.logger.error("Failed to generate a response after multiple attempts.")
+                                self.app.logger.error(f"Error while generating response. Now fixing: {e}")
+                                st.error(f"Error while processing response. Please try again.")
+                                break
+                    else:
+                        st.error("Failed to generate a response after multiple attempts. Please check your query or try again later.")
+                        self.app.logger.error("Failed to generate a response after multiple attempts.")
 
     def handle_data_tab(self):
-        if ("data" not in st.session_state) and ("db" not in st.session_state):
-            st.warning(WARNING_MESSAGE)
-            return 
+        if not self.is_data_and_llm_connected():
+            return
         
         st.write("#### Dataset Table Selection")
-
         selected_table = st.selectbox("Choose a table from the database for Data Preview:", st.session_state.table_names)
+        st.session_state.selected_table = selected_table
+
         if st.session_state.db.dialect == "bigquery":
             query = f'SELECT * FROM `{selected_table}`'
         else:
@@ -818,7 +828,6 @@ class UIManager:
 
         st.session_state.df = st.session_state.df.dropna(axis=1, how="all")
         total_rows = st.session_state.df.shape[0]
-
         table_summary = ""
         editable_data = None
 
@@ -856,7 +865,6 @@ class UIManager:
 
             # Process the edited data
             if st.form_submit_button("Save Changes"):
-                # Save all information together
                 full_table_info = {
                     "table_name": selected_table,
                     "table_summary": table_summary,
@@ -982,9 +990,8 @@ class UIManager:
         """
         Displays the sql_query_documents in a table format inside the Document Tab.
         """
-        if ("data" not in st.session_state) and ("db" not in st.session_state):
-            st.warning(WARNING_MESSAGE)
-            return 
+        if not self.is_data_and_llm_connected():
+            return
 
         if "vector_store" not in st.session_state:
             st.markdown("Initializing the vector store for SQL Query Documents...")
@@ -1007,7 +1014,6 @@ class UIManager:
                 vector_name="dense_embedding",
                 sparse_vector_name="sparse_embedding",
             )
-
             st.session_state.retriever = st.session_state.vector_store.as_retriever(search_type="mmr", search_kwargs={"k": 5})
 
             retrieved_docs = client.scroll(
@@ -1028,12 +1034,12 @@ class UIManager:
             submitted = st.form_submit_button("Add Document")
 
             if submitted:
-                if not (user_query_input.strip() and sql_query_input.strip()):
+                if not (user_query_input and sql_query_input):
                     st.warning("Please fill in both fields.")
                 elif not confirm_save:
                     st.warning("Please confirm you want to save this document.")
                 else:
-                    page_content = {"User Query": user_query_input.strip(), "SQL Query": sql_query_input.strip()}
+                    page_content = {"User Query": user_query_input, "SQL Query": sql_query_input}
                     new_doc = [Document(page_content=json.dumps(page_content), metadata={"source": st.session_state.file_name})]
                     uuids = [str(uuid4())]
                     self.add_documents_to_vector_store(new_doc, uuids, page_content)
@@ -1072,29 +1078,26 @@ class UIManager:
             else:
                 st.warning("Please enter a question to search.")
 
-        documents = getattr(st.session_state, "sql_query_documents", [])
-        if not documents:
+        print("SQL Query Documents:", st.session_state.sql_query_documents)
+        if not st.session_state.sql_query_documents:
             st.info("No documents found in the vector store.")
             return
 
         # Display the SQL Documents
         doc_data = []
-        for doc in documents:
-            question = ""
-            answer = ""
-            # Parse the page_content
-            if hasattr(doc, "page_content") and isinstance(doc.page_content, str):
-                parts = doc.page_content.split("SQL Query:", 1)
-                if len(parts) == 2:
-                    question = parts[0].replace("User Query:", "").strip()
-                    answer = parts[1].strip()
-                else:
-                    question = doc.page_content.strip()
-            doc_data.append({
-                "User Query": question,
-                "SQL Query": answer,
-                "Database": doc.metadata.get("database", doc.metadata.get("source", "")) if hasattr(doc, "metadata") else ""
-            })
+        for doc in st.session_state.sql_query_documents:
+            try:
+                page_content = json.loads(doc.payload['page_content'])
+                doc_data.append({
+                    "User Query": page_content['User Query'],
+                    "SQL Query": page_content['SQL Query'],
+                    "Table Name": doc.payload['metadata']['table_name']
+                })
+            except Exception as e:
+                print(f"Error processing document: {e}")
+                pass
+            except Exception as e:
+                pass
 
         df = pd.DataFrame(doc_data)
         df.index = range(1, len(df) + 1) 
