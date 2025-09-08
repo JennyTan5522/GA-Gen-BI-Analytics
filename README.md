@@ -130,27 +130,23 @@ Gen BI/
 ## Demo Usage Guide
 ⭐Below are sample UI with IntelliQuery BI’s interface and features:
 
-<div align="center">
-
-### 1. Response Tab
+#### 1. Response Tab
 
 <img src="data/img/response_tab_ui.png" alt="Response Tab UI" width="600"/>
 
 ---
 
-### 2. Data Tab
+#### 2. Data Tab
 
 <img src="data/img/data_tab_ui.png" alt="Data Tab UI" width="600"/>
 
 ---
 
-### 3. Document Tab
+#### 3. Document Tab
 
 <img src="data/img/doc_tab_ui.png" alt="Document Tab UI" width="600"/>
 
 ---
-
-</div>
 
 ⭐️ More demo content coming soon. Stay tuned!
 
