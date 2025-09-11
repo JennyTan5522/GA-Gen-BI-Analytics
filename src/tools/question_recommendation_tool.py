@@ -1,6 +1,8 @@
 from langchain_core.prompts import ChatPromptTemplate
-from const import QUESTION_RECOMMENDATION_PROMPT_TEMPALTE
-from notebooks.Logger_Manager import logger
+from data.const import QUESTION_RECOMMENDATION_PROMPT_TEMPALTE
+from config.logger import get_logger
+
+logger = get_logger(__name__)
 
 def format_question(question_recommendations: str) -> str:
     import json, re
