@@ -58,7 +58,11 @@ Gen BI/
 │
 ├── data/
 │   ├── const.py
-│
+│   └── img/
+│       ├── IntelliQuery BI Framework.drawio.png
+│       ├── response_tab_ui.png
+│       ├── data_tab_ui.png
+│       └── doc_tab_ui.png
 ├── src/
 │   ├── excel_loader/
 │   │   ├── __init__.py
@@ -138,8 +142,8 @@ Gen BI/
 
 #### 2. Data Tab
 
-<img src="data/img/data_tab_ui.png" alt="Data Tab UI" width="600"/>
-
+<img src="data/img/data_tab_ui_1.png" alt="Data Tab UI" width="600"/>
+<img src="data/img/data_tab_ui_2.png" alt="Data Tab UI" width="600"/>
 ---
 
 #### 3. Document Tab
