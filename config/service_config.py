@@ -15,7 +15,7 @@ class ServiceConfig(BaseSettings):
     )
 
     # Logging configuration
-    LOG_LEVEL: str = Field("INFO", validation_alias="LOG_LEVEL")
+    LOG_LEVEL: str = Field("DEBUG", validation_alias="LOG_LEVEL")
     LOG_FILE: str = Field(f"logs/{date.today().isoformat()}_log.log", validation_alias="LOG_FILE")
 
     # Qdrant
@@ -24,6 +24,9 @@ class ServiceConfig(BaseSettings):
 
     # Google Big Query
     GOOGLE_SERVICE_ACCOUNT_FILE: Optional[str] = Field(default=None, validation_alias="GOOGLE_SERVICE_ACCOUNT_FILE")
+
+    # Table schema info path
+    TABLE_SCHEMA_INFO_PATH: Optional[str] = Field(default="data/table_info", validation_alias="TABLE_SCHEMA_INFO_PATH")
 
     @field_validator("QDRANT_HOST")
     def validate_urls(cls, v: SecretStr):
