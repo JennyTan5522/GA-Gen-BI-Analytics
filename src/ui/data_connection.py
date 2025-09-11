@@ -11,33 +11,31 @@ logger = get_logger(__name__)
 def excel_connection() :
     """Establish connection with uploaded Excel or CSV data and process it for use in the app."""
     try:
-        results, sql_database, sql_inspector, structured_excel_elements = data_ingestion(
-            data=st.session_state.data, filename=st.session_state.data.name
-        )
-        st.session_state.sql_inspector = sql_inspector
-        st.session_state.db = sql_database
+        if st.button("Connect"):
+            with st.spinner("Connecting to Excel File..."):
+                results, sql_database, sql_inspector, structured_excel_elements = data_ingestion(
+                    data=st.session_state.data, filename=st.session_state.data.name
+                )
+                st.session_state.sql_inspector = sql_inspector
+                st.session_state.db = sql_database
 
-        if st.session_state.data.name.endswith(".csv"):
-            table_name, (df_cleaned, schema) = next(iter(results.items()))
-            st.session_state.schema = schema
-            st.session_state.df = df_cleaned
+                if st.session_state.data.name.endswith(".xlsx"):
+                    logger.info("Load Excel Data into Vector DB...")
+                    st.session_state.vector_store = load_data_into_vector_db(excel_structured_documents=structured_excel_elements, collection_name="excel_data")
+                    st.session_state.bm25_retriever = BM25Retriever.from_documents(structured_excel_elements)
+                    st.session_state.bm25_retriever.k = 3
+                    logger.info("Completed loading Excel Data into Vector DB.")
 
-        if st.session_state.data.name.endswith(".xlsx"):
-            logger.info("Load Excel Data into Vector DB...")
-            st.session_state.vector_store = load_data_into_vector_db(
-                excel_structured_documents=structured_excel_elements, collection_name="excel_data"
-            )
-            st.session_state.bm25_retriever = BM25Retriever.from_documents(structured_excel_elements)
-            st.session_state.bm25_retriever.k = 3
-            logger.info("Completed loading Excel Data into Vector DB.")
+                st.session_state.file_name = st.session_state.data.name.split(".")[0]
+                logger.debug(f"Filename: {st.session_state.file_name}")
+                st.session_state.table_names = st.session_state.sql_inspector.get_table_names()
 
-        st.session_state.file_name = st.session_state.data.name.split(".")[0]
-        logger.debug(f"Filename: {st.session_state.file_name}")
-        st.session_state.table_names = st.session_state.sql_inspector.get_table_names()
+                return True
 
     except Exception as e:
         logger.error(f"Error loading the file: {e}")
         st.error(f"Error loading the file: {e}")
+        return False
 
 def database_connection():
     """Establish a database connection using BigQuery, SQL Server, or Windows Authentication."""
@@ -63,6 +61,7 @@ def database_connection():
                     st.session_state.db_name = database
                     st.success("Connected to database!")
                     logger.info("Connected to database using Windows Authentication.")
+                    return True
                 except Exception as e:
                     logger.error(f"Error connecting to the database: {e}")
                     st.error(f"Error connecting to the database: {e}")
@@ -81,6 +80,7 @@ def database_connection():
                     st.session_state.db_name = database
                     st.success("Connected to database!")
                     logger.info("Connected to database using SQL Server Authentication.")
+                    return True
                 except Exception as e:
                     logger.error(f"Error connecting to the database: {e}")
                     st.error(f"Error connecting to the database: {e}")
@@ -128,9 +128,13 @@ def database_connection():
                         st.session_state.db_name = "BigQuery"
                         st.success("Connected to BigQuery!")
                         logger.info("Connected to BigQuery.")
+                        return True
+ 
                     except Exception as e:
                         logger.error(f"Error connecting to BigQuery: {e}")
                         st.error(f"Error connecting to BigQuery: {e}")
         except Exception as e:
             logger.error(f"Error initializing BigQuery client: {e}")
             st.error(f"Error initializing BigQuery client: {e}")
+
+    return False

@@ -9,6 +9,9 @@ from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 from langchain_core.documents import Document
 from uuid import uuid4
 from pydantic import BaseModel, Field
+from data.const import WARNING_MESSAGE
+from src.ui.setup_st_config import is_data_and_llm_connected
+from src.ui.document_tab import add_documents_to_vector_store
 from data.const import TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE, PYTHON_PLOT_PROMPT_TEMPLATE, FIX_FINAL_RESPONSE_TEMPLATE
 from config.logger import get_logger
 
@@ -23,6 +26,10 @@ class FinalAnswerFormat(BaseModel):
 class ResponseTab:
     def __init__(self):
         """Initialize and handle the response tab UI."""
+        if not is_data_and_llm_connected():
+            st.warning(WARNING_MESSAGE)
+            return
+
         self.handle_response_tab()
 
     def final_response_output_parser(self, response_text: str):
@@ -111,12 +118,12 @@ class ResponseTab:
 
             # Build table info context for prompt
             table_info_prompt_template = ""
-            if st.session_state.tables_info and len(st.session_state.tables_info) > 0:
-                all_tables_info = self.get_table_info(st.session_state.tables_info)
-                table_info_prompt_template += "\nThe following context provides detailed information about the database tables and their columns.\n"
-                table_info_prompt_template += "Use this information to accurately generate SQL queries.\n"
-                table_info_prompt_template += "## Table Context Information\n"
-                table_info_prompt_template += f"\n{all_tables_info}"
+            # if st.session_state.tables_info and len(st.session_state.tables_info) > 0:
+            #     all_tables_info = self.get_table_info(st.session_state.tables_info)
+            #     table_info_prompt_template += "\nThe following context provides detailed information about the database tables and their columns.\n"
+            #     table_info_prompt_template += "Use this information to accurately generate SQL queries.\n"
+            #     table_info_prompt_template += "## Table Context Information\n"
+            #     table_info_prompt_template += f"\n{all_tables_info}"
 
             prompt_template = PromptTemplate.from_template(
                 TEXT_TO_SQL_TO_CHART_PROMPT_TEMPLATE,
@@ -181,8 +188,8 @@ class ResponseTab:
             logger.error(f"Error invoking agent response: {e}")
             st.error(f"Error invoking agent response: {e}")
 
-    def render_agent_thinking(self, agent_thoughts):
-        """Render the agent's reasoning steps in the UI.
+    def display_agent_thinking(self, agent_thoughts):
+        """display the agent's reasoning steps in the UI.
 
         Args:
             agent_thoughts: List of agent reasoning steps.
@@ -259,7 +266,7 @@ class ResponseTab:
                 page_content = {"User Query": user_query, "SQL Query": sql_query}
                 sql_query_document = [Document(page_content=json.dumps(page_content), metadata={"table_name": st.session_state.selected_table})]
                 uuids = [str(uuid4())]
-                self.add_documents_to_vector_store(sql_query_document, uuids, page_content)
+                add_documents_to_vector_store(sql_query_document, uuids, page_content)
 
         st.session_state.feedback = True
 
@@ -312,7 +319,7 @@ class ResponseTab:
 
                 with agent_tab:
                     if agent_thoughts:
-                        self.render_agent_thinking(agent_thoughts)
+                        self.display_agent_thinking(agent_thoughts)
                     else:
                         st.info("No agent reasoning provided.")
             else:
@@ -334,7 +341,7 @@ class ResponseTab:
 
                 with agent_tab:
                     if agent_thoughts:
-                        self.render_agent_thinking(agent_thoughts)
+                        self.display_agent_thinking(agent_thoughts)
                     else:
                         st.info("No agent reasoning provided.")
         except Exception as e:
@@ -398,64 +405,10 @@ class ResponseTab:
     def handle_response_tab(self):
         """Main logic for the response tab, including chat history and feedback."""
         try:
-            if not st.session_state.is_data_and_llm_connected:
-                return
-
             if "messages" not in st.session_state:
                 st.session_state["messages"] = [{"role": "assistant", "content": "Hello! I'm your SQL Assistant. How can I assist you today?"}]
                 logger.debug("Session messages initialized.")
                 st.session_state["selected_mode"] = "SQL to Chart 📊"
-
-            if "excel_summary" in st.session_state:
-                summary_html = st.session_state.excel_summary.replace("\n", "<br>")
-                with st.expander("📃 Data Summary"):
-                    st.markdown(
-                        """<p style="font-size: 11px; color: gray;"> An enriched data summary with semantic types and descriptions.</p>""",
-                        unsafe_allow_html=True
-                    )
-                    st.markdown(
-                        f"""
-                        <div style="font-size: 11px; color: gray; text-align: justify; background-color: #f0f0f0; border-radius: 8px; padding: 10px; ">
-                            {summary_html}
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
-            if "question_recommendations" in st.session_state:
-                grouped_questions = {}
-                for item in st.session_state.question_recommendations["questions"]:
-                    category = item["category"]
-                    question = item["question"]
-                    if category not in grouped_questions:
-                        grouped_questions[category] = []
-                    grouped_questions[category].append(question)
-
-                with st.expander("💡 Goal Exploration"):
-                    st.markdown(
-                        """<p style="font-size: 11px; color: gray;"> A list of automatically generated data exploration goals based on the dataset given.</p>""",
-                        unsafe_allow_html=True
-                    )
-                    categories = list(grouped_questions.keys())
-                    num_columns = 3
-                    columns = st.columns(num_columns)
-                    for index, category in enumerate(categories):
-                        col = columns[index % num_columns]
-                        with col.container():
-                            st.markdown(
-                                f"""
-                                <div style="border-radius: 8px; padding-left: 10px; background-color: #f9f9f9; 
-                                            box-shadow: 2px 2px 5px rgba(0,0,0,0.1); width: 100%;">
-                                    <h4 style="color: #333; font-size: 13px; font-weight: bold; margin: 0;">{category}</h4>
-                                </div>
-                                <div style="padding-left: 15px; margin-top: 5px;">
-                                    <ul style="padding-left: 15px; color: #333;">
-                                        {''.join(f'<li style="margin-bottom: 4px; font-size: 11px; text-align: justify;">{question}</li>' for question in grouped_questions[category])}
-                                    </ul>
-                                </div>
-                                """,
-                                unsafe_allow_html=True
-                            )
 
             last_query = ""
             for idx, message in enumerate(st.session_state.messages):

@@ -7,14 +7,31 @@ from qdrant_client.http.models import Distance, SparseVectorParams, VectorParams
 from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
 from langchain_core.documents import Document
 from src.llm.embedding_model import get_embedding_model
+from src.ui.setup_st_config import is_data_and_llm_connected
 from config.service_config import ServiceConfig
 from config.logger import get_logger
 
 logger = get_logger(__name__)
 
+def add_documents_to_vector_store(sql_query_documents: list, uuids: list, sql_query_input: dict):
+    """
+    Adds SQL query documents to the vector store.
+
+    Args:
+        sql_query_documents (list): List of Document objects to add to the vector store.
+        uuids (list): List of unique identifiers for the documents.
+        sql_query_input (dict): Dictionary containing the user query and SQL query to be saved.
+    """
+    st.session_state.vector_store.add_documents(documents=sql_query_documents, ids=uuids)
+    st.session_state.sql_query_documents.append(sql_query_input)
+    logger.info(f"Add Documents into Vector Store: \n{sql_query_input}")
+    st.success("Document saved successfully! Document has been added and stored in the vector store for future reference.")
 class DocumentTab:
     def __init__(self):
         """Initialize DocumentTab and handle the document tab UI."""
+        if not is_data_and_llm_connected():
+            return
+
         self.handle_document_tab()
     
     def create_qdrant_collection_if_not_exists(self, client: QdrantClient, collection_name: str):
@@ -37,9 +54,6 @@ class DocumentTab:
         
     def handle_document_tab(self):
         """Display and manage SQL query documents in the Document Tab."""
-        if not st.session_state.is_data_and_llm_connected:
-            return
-
         service_config = ServiceConfig()
         if "vector_store" not in st.session_state:
             st.markdown("Initializing the vector store for SQL Query Documents...")
@@ -96,7 +110,7 @@ class DocumentTab:
                         page_content = {"User Query": user_query_input, "SQL Query": sql_query_input}
                         new_doc = [Document(page_content=json.dumps(page_content), metadata={"source": st.session_state.file_name})]
                         uuids = [str(uuid4())]
-                        self.add_documents_to_vector_store(new_doc, uuids, page_content)
+                        add_documents_to_vector_store(new_doc, uuids, page_content)
                         logger.info("New document added to vector store.")
                     except Exception as e:
                         logger.error(f"Error adding document: {e}")
@@ -158,19 +172,6 @@ class DocumentTab:
         st.write("### All SQL Query Documents")
         st.dataframe(df, use_container_width=True)
 
-        # Download all documents as JSON
-        if st.button("Download All Documents as JSON"):
-            try:
-                all_docs = st.session_state.sql_query_documents
-                json_data = [json.loads(doc.payload['page_content']) for doc in all_docs]
-                json_filename = f"sql_query_documents_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.json"
-                with open(json_filename, 'w') as json_file:
-                    json.dump(json_data, json_file, indent=4)
-                st.success(f"Downloaded {len(json_data)} documents as JSON.")
-            except Exception as e:
-                logger.error(f"Error downloading documents: {e}")
-                st.error(f"Error downloading documents: {e}")
-
         # Clear all documents in the vector store
         if st.button("Clear All Documents"):
             confirm_clear = st.checkbox("I confirm I want to clear all documents.", key="confirm_clear")
@@ -189,6 +190,7 @@ class DocumentTab:
 
         st.divider()
         st.write("#### 📊 View Document Embeddings")
+        logger.info(f"Document embeddings: {[doc for doc in st.session_state.sql_query_documents]}")
         if st.session_state.sql_query_documents:
             doc_to_view = st.selectbox(
                 "Select a document to view its embeddings",

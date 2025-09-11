@@ -1,8 +1,11 @@
 import streamlit as st
+import asyncio
 from langchain.memory import ConversationBufferWindowMemory
 from src.llm.chat_model import get_chat_model
 from src.llm.embedding_model import get_embedding_model
 from src.ui.data_connection import excel_connection, database_connection
+from src.tools.dataset_summary_tool import dataset_summary_async
+from src.tools.question_recommendation_tool import generate_question_recommendations_async
 from data.const import WARNING_MESSAGE
 from config.logger import get_logger
 
@@ -36,7 +39,43 @@ class StreamlitConfig:
         for key, value in defaults.items():
             if key not in st.session_state:
                 st.session_state[key] = value
-        logger.debug("Session state configured with defaults.")
+       
+    def generate_dataset_overview(self):
+        """
+        Generates a summary and recommended questions for the uploaded dataset.
+        """
+        num_rows = min(len(st.session_state.df), 11)
+        sample_dataset = st.session_state.df[:num_rows]
+        sample_dataset_str = sample_dataset.to_csv(sep="|", index=False, lineterminator="\n")
+
+        async def main(llm, sample_dataset_str, rows, cols, schema):
+            logger.debug("Starting concurrent execution of summary and question recommendations...")
+            excel_summary, question_recommendations = await asyncio.gather(
+                dataset_summary_async(llm, sample_dataset_str, rows, cols, schema),
+                generate_question_recommendations_async(llm, sample_dataset_str)
+            )
+            logger.debug("Concurrent execution completed.")
+            return excel_summary, question_recommendations
+
+        excel_summary, question_recommendations = asyncio.run(
+            main(
+                st.session_state.llm,
+                sample_dataset_str,
+                st.session_state.df.shape[0],
+                st.session_state.df.shape[1],
+                st.session_state.schema
+            )
+        )
+        logger.debug(f"Excel Summary: {excel_summary}")
+        logger.debug(f"Question Recommendation: {question_recommendations}")
+
+    def clear_history(self):
+        """Clear message history and memory."""
+        if "messages" in st.session_state:
+            st.session_state.messages = []
+        if "memory" in st.session_state:
+            st.session_state.memory.clear()
+        logger.info("Message history cleared.")
 
     def configure_sidebar(self):
         """Configure the Streamlit sidebar for data connection, API key, memory, and clearing history."""
@@ -52,16 +91,20 @@ class StreamlitConfig:
                     if data:
                         st.session_state.data = data
                         try:
-                            excel_connection()
-                            logger.info("Excel data connection established.")
+                            is_connected = excel_connection()
+                            if is_connected:
+                                logger.info("Excel data connection established.")
+                                self.clear_history()
                         except Exception as e:
                             logger.error(f"Error connecting to Excel data: {e}")
                             st.error(f"Error connecting to Excel data: {e}")
 
                 elif connection_type == "Connect to Database":
                     try:
-                        database_connection()
-                        logger.info("Database connection established.")
+                        is_connected = database_connection()
+                        if is_connected:
+                            logger.info("Database connection established.")
+                            self.clear_history()
                     except Exception as e:
                         logger.error(f"Error connecting to database: {e}")
                         st.error(f"Error connecting to database: {e}")
@@ -95,37 +138,20 @@ class StreamlitConfig:
                 logger.error(f"Error while connecting to Claude Model: {e}")
                 st.error(f"Error while connecting to Claude Model: {e}")
 
-            # Only generate dataset overview if both data and LLM are connected
-            st.session_state.is_data_and_llm_connected = self.is_data_and_llm_connected()
-            if connection_type == "Upload CSV/Excel" and st.session_state.is_data_and_llm_connected:
-                try:
-                    self.generate_dataset_overview()
-                    logger.info("Dataset overview generated.")
-                except Exception as e:
-                    logger.error(f"Error generating dataset overview: {e}")
-                    st.error(f"Error generating dataset overview: {e}")
-
+            st.markdown("---")
             st.sidebar.write("🛠 Memory Settings")
             st.session_state.k = st.slider("Memory Size", 1, 10, st.session_state.k)
 
             if st.button("🗑 Clear Message History"):
-                if "messages" in st.session_state:
-                    st.session_state.messages = []
-                if "memory" in st.session_state:
-                    st.session_state.memory.clear()
-                logger.info("Message history cleared.")
+                self.clear_history()
 
-    def is_data_and_llm_connected(self) -> bool:
-        """
-        Check if both a data source and LLM are connected.
-        Returns True if both are connected, otherwise shows a warning and returns False.
-        """
-        if "data" not in st.session_state and "db" not in st.session_state:
-            st.warning(WARNING_MESSAGE)
-            logger.warning("Data source not connected.")
-            return False
-        if "llm" not in st.session_state:
-            st.warning("Please enter the API key to start conversation")
-            logger.warning("LLM not connected.")
-            return False
-        return True
+def is_data_and_llm_connected() -> bool:
+    """
+    Check if both a data source and LLM are connected.
+    Returns True if both are connected, otherwise shows a warning and returns False.
+    """
+    if "data" not in st.session_state and "db" not in st.session_state:
+        return False
+    if "llm" not in st.session_state:
+        return False
+    return True
