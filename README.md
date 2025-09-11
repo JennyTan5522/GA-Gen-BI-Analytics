@@ -145,6 +145,7 @@ Gen BI/
 <img src="data/img/data_tab_ui_1.png" alt="Data Tab UI" width="600"/>
 <img src="data/img/data_tab_ui_2.png" alt="Data Tab UI" width="600"/>
 <img src="data/img/data_tab_ui_3.png" alt="Data Tab UI" width="600"/>
+
 ---
 
 #### 3. Document Tab
