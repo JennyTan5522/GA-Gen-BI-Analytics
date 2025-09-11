@@ -89,8 +89,8 @@ class StreamlitConfig:
                 if connection_type == "Upload CSV/Excel":
                     data = st.file_uploader("\U0001F4BB Load an Excel file:", type=["csv", "xlsx"])
                     if data:
-                        st.session_state.data = data
                         try:
+                            st.session_state.data = data
                             is_connected = excel_connection()
                             if is_connected:
                                 logger.info("Excel data connection established.")
@@ -115,7 +115,7 @@ class StreamlitConfig:
                 st.title("API Access")
                 llm_api_key = st.text_input("Enter your Claude API Key:", type="password")
 
-                if st.button("Connect to Claude API"):
+                if st.button("Connect to Claude Model"):
                     if llm_api_key:
                         try:
                             chat_model = get_chat_model(
@@ -150,7 +150,7 @@ def is_data_and_llm_connected() -> bool:
     Check if both a data source and LLM are connected.
     Returns True if both are connected, otherwise shows a warning and returns False.
     """
-    if "data" not in st.session_state and "db" not in st.session_state:
+    if "db" not in st.session_state:
         return False
     if "llm" not in st.session_state:
         return False

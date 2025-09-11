@@ -27,7 +27,6 @@ def excel_connection() :
                     logger.info("Completed loading Excel Data into Vector DB.")
 
                 st.session_state.file_name = st.session_state.data.name.split(".")[0]
-                logger.debug(f"Filename: {st.session_state.file_name}")
                 st.session_state.table_names = st.session_state.sql_inspector.get_table_names()
 
                 return True

@@ -107,8 +107,20 @@ class DocumentTab:
                     st.warning("Please confirm you want to save this document.")
                 else:
                     try:
+                        selected_table = st.session_state.selected_table
+                        db_engine = str(st.session_state.db._engine.url)
+
+                        try:
+                            if db_engine.startswith("sqlite"):
+                                db_name = db_engine.split("/")[-1].split(".")[0]
+                            else:
+                                db_name = db_engine
+                        except Exception as e:
+                            logger.error(f"Error parsing database name from engine URL: {e}")
+                            db_name = ""
+                    
                         page_content = {"User Query": user_query_input, "SQL Query": sql_query_input}
-                        new_doc = [Document(page_content=json.dumps(page_content), metadata={"source": st.session_state.file_name})]
+                        new_doc = [Document(page_content=json.dumps(page_content), metadata={"database": db_name, "table_name": selected_table})]
                         uuids = [str(uuid4())]
                         add_documents_to_vector_store(new_doc, uuids, page_content)
                         logger.info("New document added to vector store.")
@@ -128,13 +140,15 @@ class DocumentTab:
                         doc_data = []
                         for doc in similar_docs:
                             try:
-                                page_content = json.loads(doc.payload['page_content'])
+                                page_content = json.loads(doc.payload.get('page_content', '{}'))
                                 question = page_content.get("User Query", "").strip()
                                 answer = page_content.get("SQL Query", "").strip()
+                                metadata = doc.payload.get('metadata', {})
                                 doc_data.append({
                                     "User Query": question,
                                     "SQL Query": answer,
-                                    "Database": doc.payload['metadata']['source']
+                                    "Database": metadata.get('database', ''),
+                                    "Table Name": metadata.get('table_name', '')
                                 })
                             except Exception as e:
                                 logger.error(f"Error processing document: {e}")
@@ -187,63 +201,3 @@ class DocumentTab:
                     st.error(f"Error clearing documents: {e}")
             else:
                 st.warning("Please confirm you want to clear all documents.")
-
-        st.divider()
-        st.write("#### 📊 View Document Embeddings")
-        logger.info(f"Document embeddings: {[doc for doc in st.session_state.sql_query_documents]}")
-        if st.session_state.sql_query_documents:
-            doc_to_view = st.selectbox(
-                "Select a document to view its embeddings",
-                options=[doc.payload['metadata']['source'] for doc in st.session_state.sql_query_documents],
-                index=0
-            )
-            if doc_to_view:
-                try:
-                    selected_doc = next(doc for doc in st.session_state.sql_query_documents if doc.payload['metadata']['source'] == doc_to_view)
-                    embeddings = selected_doc.vector
-                    st.write(f"**Embeddings for Document:** {doc_to_view}")
-                    st.json(embeddings.tolist())
-                except Exception as e:
-                    logger.error(f"Error retrieving embeddings: {e}")
-                    st.error(f"Error retrieving embeddings: {e}")
-        else:
-            st.info("No documents available to show embeddings.")
-
-        st.divider()
-        st.write("#### 🔍 Advanced Search SQL Query Documents")
-        with st.form("advanced_search_form"):
-            search_question: str = st.text_input("Search Question", placeholder="Enter question to search")
-            min_date: str = st.date_input("Min Date", value=pd.to_datetime("2023-01-01"), max_value=pd.to_datetime("today")).strftime("%Y-%m-%d")
-            max_date: str = st.date_input("Max Date", value=pd.to_datetime("today"), min_value=pd.to_datetime("2023-01-01")).strftime("%Y-%m-%d")
-            database_filter: str = st.text_input("Database Filter", placeholder="Enter database name to filter")
-            apply_filters: bool = st.form_submit_button("Apply Filters")
-
-            if apply_filters:
-                try:
-                    filtered_docs = st.session_state.sql_query_documents
-                    if search_question:
-                        filtered_docs = [doc for doc in filtered_docs if json.loads(doc.payload['page_content']).get("User Query", "").lower().startswith(search_question.lower())]
-                    if database_filter:
-                        filtered_docs = [doc for doc in filtered_docs if doc.payload['metadata']['source'] == database_filter]
-                    st.write(f"### Filtered SQL Query Documents ({len(filtered_docs)})")
-                    if filtered_docs:
-                        doc_data = []
-                        for doc in filtered_docs:
-                            try:
-                                page_content = json.loads(doc.payload['page_content'])
-                                doc_data.append({
-                                    "User Query": page_content['User Query'],
-                                    "SQL Query": page_content['SQL Query'],
-                                    "Table Name": doc.payload['metadata']['table_name']
-                                })
-                            except Exception as e:
-                                logger.error(f"Error processing document: {e}")
-
-                        df = pd.DataFrame(doc_data)
-                        df.index = range(1, len(df) + 1)
-                        st.dataframe(df, use_container_width=True)
-                    else:
-                        st.info("No documents found matching the filters.")
-                except Exception as e:
-                    logger.error(f"Error applying filters: {e}")
-                    st.error(f"Error applying filters: {e}")

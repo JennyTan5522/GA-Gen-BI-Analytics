@@ -263,8 +263,20 @@ class ResponseTab:
                 sql, text_response, code_block, follow_up_questions, final_answer_str_format = self.final_response_output_parser(response_output["output"])
                 self.saved_user_message(user_query, final_answer_str_format, response_output["intermediate_steps"])
             else:
+                selected_table = st.session_state.selected_table
+                db_engine = str(st.session_state.db._engine.url)
+
+                try:
+                    if db_engine.startswith("sqlite"):
+                        db_name = db_engine.split("/")[-1].split(".")[0]
+                    else:
+                        db_name = db_engine
+                except Exception as e:
+                    logger.error(f"Error parsing database name from engine URL: {e}")
+                    db_name = ""
+
                 page_content = {"User Query": user_query, "SQL Query": sql_query}
-                sql_query_document = [Document(page_content=json.dumps(page_content), metadata={"table_name": st.session_state.selected_table})]
+                sql_query_document = [Document(page_content=json.dumps(page_content), metadata={"database": db_name, "table_name": selected_table})]
                 uuids = [str(uuid4())]
                 add_documents_to_vector_store(sql_query_document, uuids, page_content)
 
