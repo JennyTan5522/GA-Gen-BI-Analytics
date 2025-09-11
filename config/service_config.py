@@ -16,7 +16,7 @@ class ServiceConfig(BaseSettings):
 
     # Logging configuration
     LOG_LEVEL: str = Field("DEBUG", validation_alias="LOG_LEVEL")
-    LOG_FILE: str = Field(f"logs/{date.today().isoformat()}_log.log", validation_alias="LOG_FILE")
+    LOG_FILE: str = Field(f"logs/{date.today().isoformat()}.log", validation_alias="LOG_FILE")
 
     # Qdrant
     QDRANT_HOST: str = Field(..., validation_alias="QDRANT_HOST")
